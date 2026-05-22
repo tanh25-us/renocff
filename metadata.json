@@ -1,0 +1,6 @@
+{
+  "name": "Reno Coffee Artisanal Management",
+  "description": "Premium management workspace for specialty coffee outlets, roastery batch logger, artisanal recipe lab, AI recipe copilot, and barista scheduling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
