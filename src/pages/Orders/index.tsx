@@ -26,6 +26,12 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   return <Badge tone={tone}>{label[status]}</Badge>;
 }
 
+function channelLabel(order: { channel: OrderChannel; pickupTime?: string; deliveryAddress?: string }) {
+  if (order.channel === 'Pickup') return `Pickup ${order.pickupTime || ''}`;
+  if (order.channel === 'Delivery') return order.deliveryAddress ? `Giao hàng · ${order.deliveryAddress}` : 'Giao hàng';
+  return 'Uống tại quán';
+}
+
 export default function Orders() {
   const { recipes, orders, customers, outlets, activeOutletId, addOrder, updateOrderStatus } = useStore();
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -37,6 +43,7 @@ export default function Orders() {
   const [filter, setFilter] = useState<'All' | OrderStatus>('All');
   const [query, setQuery] = useState('');
   const [receiptId, setReceiptId] = useState('');
+  const [formError, setFormError] = useState('');
 
   const activeOutlet = outlets.find((outlet) => outlet.id === activeOutletId) || outlets[0];
   const total = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
@@ -75,22 +82,32 @@ export default function Orders() {
 
   const submitOrder = (event: FormEvent) => {
     event.preventDefault();
+    setFormError('');
     if (!cart.length) return;
-    const order = addOrder({
-      customerName: customerName || 'Khách vãng lai',
-      customerPhone: customerPhone || undefined,
-      channel,
-      pickupTime: channel === 'Pickup' ? pickupTime : undefined,
-      items: cart,
-      status: 'Pending',
-      total,
-      outletId: activeOutletId,
-      paymentMethod,
-    });
-    setReceiptId(order.id);
-    setCart([]);
-    setCustomerName('');
-    setCustomerPhone('');
+    if (!customerName.trim() || !customerPhone.trim()) {
+      setFormError('Cần có họ tên và số điện thoại khách hàng để tạo đơn.');
+      return;
+    }
+    try {
+      const order = addOrder({
+        customerName,
+        customerPhone,
+        channel,
+        pickupTime: channel === 'Pickup' ? pickupTime : undefined,
+        source: 'POS',
+        items: cart,
+        status: 'Pending',
+        total,
+        outletId: activeOutletId,
+        paymentMethod,
+      });
+      setReceiptId(order.id);
+      setCart([]);
+      setCustomerName('');
+      setCustomerPhone('');
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Không thể tạo đơn hàng.');
+    }
   };
 
   return (
@@ -168,8 +185,8 @@ export default function Orders() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-display text-lg font-bold">{order.id}</p>
                         <StatusBadge status={order.status} />
-                        <Badge tone={order.channel === 'Pickup' ? 'primary' : 'neutral'}>
-                          {order.channel === 'Pickup' ? `Pickup ${order.pickupTime || ''}` : 'Uống tại quán'}
+                        <Badge tone={order.channel === 'Pickup' || order.channel === 'Delivery' ? 'primary' : 'neutral'}>
+                          {channelLabel(order)}
                         </Badge>
                       </div>
                       <p className="mt-2 text-sm font-semibold">{order.customerName}</p>
@@ -306,10 +323,16 @@ export default function Orders() {
             </div>
 
             <PermissionGuard permission="canManageOrders" displayMode="inline-alert">
-              <Button type="submit" className="w-full" disabled={!cart.length}>
+              <Button type="submit" className="w-full" disabled={!cart.length || !customerName.trim() || !customerPhone.trim()}>
                 Xuất biên lai
               </Button>
             </PermissionGuard>
+
+            {formError && (
+              <div className="rounded-xl bg-[#ffdad6] p-3 text-sm font-semibold text-[#93000a]">
+                {formError}
+              </div>
+            )}
 
             {receiptId && (
               <div className="rounded-xl border border-[#b7cdb8] bg-[#dfeadc] p-3 text-sm font-semibold text-[#26442f]">

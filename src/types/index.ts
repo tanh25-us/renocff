@@ -1,6 +1,7 @@
 export type MenuCategory = 'Coffee' | 'Cold Brew' | 'Tea' | 'Pastry' | 'Retail';
 export type AppRouteId = 'storefront' | 'dashboard' | 'orders' | 'menu' | 'customers' | 'branches';
-export type OrderChannel = 'DineIn' | 'Pickup';
+export type OrderChannel = 'DineIn' | 'Pickup' | 'Delivery';
+export type OrderSource = 'Website' | 'MobileApp' | 'POS';
 export type OrderStatus = 'Pending' | 'Brewing' | 'Ready' | 'Completed' | 'Cancelled';
 export type PaymentMethod = 'Cash' | 'Card' | 'Banking' | 'Wallet';
 
@@ -88,14 +89,27 @@ export interface Order {
   id: string;
   customerName: string;
   customerPhone?: string;
+  customerEmail?: string;
   channel: OrderChannel;
   pickupTime?: string;
+  deliveryAddress?: string;
+  source?: OrderSource;
   items: OrderItem[];
   orderTime: string;
   status: OrderStatus;
   total: number;
   outletId: string;
   paymentMethod: PaymentMethod;
+}
+
+export interface LoyaltyPointEntry {
+  id: string;
+  date: string;
+  description: string;
+  orderId?: string;
+  type: 'Earned' | 'Redeemed' | 'Adjusted';
+  points: number;
+  balanceAfter: number;
 }
 
 export interface Customer {
@@ -105,6 +119,8 @@ export interface Customer {
   email: string;
   totalOrders: number;
   spentValue: number;
+  pointsBalance: number;
+  pointHistory: LoyaltyPointEntry[];
   loyaltyTier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond';
   notes: string;
   joinedDate: string;

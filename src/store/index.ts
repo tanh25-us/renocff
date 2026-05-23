@@ -3,6 +3,7 @@ import {
   Barista,
   BeanStock,
   Customer,
+  LoyaltyPointEntry,
   Order,
   OrderStatus,
   Outlet,
@@ -11,7 +12,7 @@ import {
   Shift,
   SystemMessage,
 } from '../types';
-import { customerService } from '../services/customer.service';
+import { CustomerInput, customerService, normalizeCustomerPhone } from '../services/customer.service';
 import { orderService } from '../services/order.service';
 
 export const ROLE_PERMISSIONS: Record<Barista['role'], RolePermission> = {
@@ -98,6 +99,7 @@ interface RenoState {
   shifts: Shift[];
   orders: Order[];
   customers: Customer[];
+  currentCustomer: Customer | null;
   systemMessages: SystemMessage[];
   activeOutletId: string;
   setRole: (role: Barista['role']) => void;
@@ -116,7 +118,9 @@ interface RenoState {
   updateBaristaRole: (baristaId: string, role: Barista['role']) => void;
   addOrder: (order: Omit<Order, 'id' | 'orderTime'>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  addCustomer: (customer: Omit<Customer, 'id' | 'joinedDate'>) => void;
+  loginCustomer: (customer: { phone: string; name?: string; email?: string }) => Customer | null;
+  logoutCustomer: () => void;
+  addCustomer: (customer: CustomerInput) => void;
   updateCustomer: (customer: Customer) => void;
   deleteCustomer: (id: string) => void;
   dismissMessage: (id: string) => void;
@@ -452,6 +456,23 @@ function tierFromSpent(spent: number): Customer['loyaltyTier'] {
   return 'Bronze';
 }
 
+function pointsFromOrder(total: number): number {
+  return Math.floor(total / 10000);
+}
+
+function createPointHistoryEntry(order: Order, balanceAfter: number): LoyaltyPointEntry {
+  const points = pointsFromOrder(order.total);
+  return {
+    id: `pts-${order.id}-${Date.now()}`,
+    date: new Date().toISOString().split('T')[0],
+    description: `Tích điểm từ đơn ${order.id}`,
+    orderId: order.id,
+    type: 'Earned',
+    points,
+    balanceAfter,
+  };
+}
+
 export const useStore = create<RenoState>((set, get) => ({
   currentRole: 'Manager',
   isLoggedIn: true,
@@ -463,6 +484,7 @@ export const useStore = create<RenoState>((set, get) => ({
   shifts: INITIAL_SHIFTS,
   orders: orderService.getOrders(),
   customers: customerService.getCustomers(),
+  currentCustomer: null,
   systemMessages: INITIAL_MESSAGES,
   activeOutletId: 'out-1',
 
@@ -529,7 +551,19 @@ export const useStore = create<RenoState>((set, get) => ({
     })),
 
   addOrder: (newOrder) => {
-    const added = orderService.addOrder(newOrder);
+    const customerName = newOrder.customerName.trim();
+    const customerPhone = normalizeCustomerPhone(newOrder.customerPhone);
+
+    if (!customerName || !customerPhone) {
+      throw new Error('Đơn hàng cần có họ tên và số điện thoại khách hàng.');
+    }
+
+    const added = orderService.addOrder({
+      ...newOrder,
+      customerName,
+      customerPhone: newOrder.customerPhone,
+      source: newOrder.source || 'POS',
+    });
     set((state) => ({
       orders: [added, ...state.orders],
       outlets: state.outlets.map((outlet) =>
@@ -548,25 +582,55 @@ export const useStore = create<RenoState>((set, get) => ({
     }));
 
     const customers = get().customers;
-    const matched = customers.find((customer) => {
-      const samePhone = added.customerPhone && customer.phone.replace(/\s/g, '') === added.customerPhone.replace(/\s/g, '');
-      const sameName = customer.name.toLowerCase() === added.customerName.toLowerCase();
-      return samePhone || sameName;
-    });
+    const matched = customers.find((customer) => normalizeCustomerPhone(customer.phone) === customerPhone);
+    const earnedPoints = pointsFromOrder(added.total);
 
     if (matched) {
+      let refreshedCustomer: Customer | null = null;
       const nextCustomers = customers.map((customer) => {
         if (customer.id !== matched.id) return customer;
         const spentValue = customer.spentValue + added.total;
-        return {
+        const pointsBalance = customer.pointsBalance + earnedPoints;
+        refreshedCustomer = {
           ...customer,
+          name: added.customerName,
+          phone: added.customerPhone || customer.phone,
+          email: added.customerEmail || customer.email,
           spentValue,
+          pointsBalance,
+          pointHistory: [createPointHistoryEntry(added, pointsBalance), ...customer.pointHistory],
           totalOrders: customer.totalOrders + 1,
           loyaltyTier: tierFromSpent(spentValue),
         };
+        return refreshedCustomer;
       });
-      set({ customers: nextCustomers });
+      const currentCustomer = get().currentCustomer;
+      const shouldRefreshSession = currentCustomer && normalizeCustomerPhone(currentCustomer.phone) === customerPhone;
+
+      set({
+        customers: nextCustomers,
+        currentCustomer: shouldRefreshSession ? refreshedCustomer : currentCustomer,
+      });
       customerService.saveCustomers(nextCustomers);
+    } else {
+      const created = customerService.addCustomer({
+        name: added.customerName,
+        phone: added.customerPhone || '',
+        email: added.customerEmail || '',
+        totalOrders: 1,
+        spentValue: added.total,
+        pointsBalance: earnedPoints,
+        pointHistory: [createPointHistoryEntry(added, earnedPoints)],
+        loyaltyTier: tierFromSpent(added.total),
+        notes: added.source === 'MobileApp' ? 'Khách đăng ký từ ứng dụng di động.' : 'Khách đăng ký từ website đặt hàng.',
+      });
+      const currentCustomer = get().currentCustomer;
+      const shouldRefreshSession = currentCustomer && normalizeCustomerPhone(currentCustomer.phone) === customerPhone;
+
+      set((state) => ({
+        customers: [created, ...state.customers],
+        currentCustomer: shouldRefreshSession ? created : state.currentCustomer,
+      }));
     }
 
     get().pushMessage('Đơn hàng mới', `${added.id} đã được gửi tới quầy pha chế.`, 'success');
@@ -587,6 +651,55 @@ export const useStore = create<RenoState>((set, get) => ({
     get().pushMessage('Cập nhật đơn hàng', `${orderId} chuyển sang trạng thái ${status}.`, status === 'Completed' ? 'success' : 'info');
   },
 
+  loginCustomer: ({ phone, name, email }) => {
+    const normalizedPhone = normalizeCustomerPhone(phone);
+    if (!normalizedPhone) return null;
+
+    const customers = get().customers;
+    const matched = customers.find((customer) => normalizeCustomerPhone(customer.phone) === normalizedPhone);
+
+    if (matched) {
+      const nextCustomer = {
+        ...matched,
+        name: name?.trim() || matched.name,
+        email: email?.trim() || matched.email,
+      };
+
+      if (nextCustomer.name !== matched.name || nextCustomer.email !== matched.email) {
+        customerService.updateCustomer(nextCustomer);
+        set((state) => ({
+          customers: state.customers.map((customer) => (customer.id === nextCustomer.id ? nextCustomer : customer)),
+          currentCustomer: nextCustomer,
+        }));
+      } else {
+        set({ currentCustomer: matched });
+      }
+
+      return nextCustomer;
+    }
+
+    if (!name?.trim()) return null;
+
+    const created = customerService.addCustomer({
+      name: name.trim(),
+      phone,
+      email: email?.trim() || '',
+      totalOrders: 0,
+      spentValue: 0,
+      loyaltyTier: 'Bronze',
+      notes: 'Khách đăng ký từ giao diện đặt hàng.',
+    });
+
+    set((state) => ({
+      customers: [created, ...state.customers],
+      currentCustomer: created,
+    }));
+
+    return created;
+  },
+
+  logoutCustomer: () => set({ currentCustomer: null }),
+
   addCustomer: (customerData) => {
     const added = customerService.addCustomer(customerData);
     set((state) => ({ customers: [added, ...state.customers] }));
@@ -595,12 +708,18 @@ export const useStore = create<RenoState>((set, get) => ({
 
   updateCustomer: (updated) => {
     const saved = customerService.updateCustomer(updated);
-    set((state) => ({ customers: state.customers.map((customer) => (customer.id === saved.id ? saved : customer)) }));
+    set((state) => ({
+      customers: state.customers.map((customer) => (customer.id === saved.id ? saved : customer)),
+      currentCustomer: state.currentCustomer?.id === saved.id ? saved : state.currentCustomer,
+    }));
   },
 
   deleteCustomer: (id) => {
     customerService.deleteCustomer(id);
-    set((state) => ({ customers: state.customers.filter((customer) => customer.id !== id) }));
+    set((state) => ({
+      customers: state.customers.filter((customer) => customer.id !== id),
+      currentCustomer: state.currentCustomer?.id === id ? null : state.currentCustomer,
+    }));
     get().pushMessage('Đã xóa khách hàng', `Hồ sơ ${id} đã được loại khỏi Reno Club.`, 'warning');
   },
 
