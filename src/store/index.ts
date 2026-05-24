@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import {
   Barista,
   BeanStock,
+  CartItem,
   Customer,
+  LoyaltyReward,
   LoyaltyPointEntry,
   Order,
   OrderStatus,
@@ -100,6 +102,7 @@ interface RenoState {
   orders: Order[];
   customers: Customer[];
   currentCustomer: Customer | null;
+  customerCart: CartItem[];
   systemMessages: SystemMessage[];
   activeOutletId: string;
   setRole: (role: Barista['role']) => void;
@@ -118,8 +121,12 @@ interface RenoState {
   updateBaristaRole: (baristaId: string, role: Barista['role']) => void;
   addOrder: (order: Omit<Order, 'id' | 'orderTime'>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  addCustomerCartItem: (recipeId: string) => void;
+  updateCustomerCartItemQuantity: (id: string, qtyDelta: number) => void;
+  clearCustomerCart: () => void;
   loginCustomer: (customer: { phone: string; name?: string; email?: string }) => Customer | null;
   logoutCustomer: () => void;
+  redeemCustomerReward: (reward: LoyaltyReward, orderId?: string) => Customer | null;
   addCustomer: (customer: CustomerInput) => void;
   updateCustomer: (customer: Customer) => void;
   deleteCustomer: (id: string) => void;
@@ -473,6 +480,18 @@ function createPointHistoryEntry(order: Order, balanceAfter: number): LoyaltyPoi
   };
 }
 
+function createRewardHistoryEntry(reward: LoyaltyReward, balanceAfter: number, orderId?: string): LoyaltyPointEntry {
+  return {
+    id: `pts-reward-${reward.id}-${Date.now()}`,
+    date: new Date().toISOString().split('T')[0],
+    description: `Đổi ${reward.points} điểm lấy ${reward.name}`,
+    orderId,
+    type: 'Redeemed',
+    points: -reward.points,
+    balanceAfter,
+  };
+}
+
 export const useStore = create<RenoState>((set, get) => ({
   currentRole: 'Manager',
   isLoggedIn: true,
@@ -485,6 +504,7 @@ export const useStore = create<RenoState>((set, get) => ({
   orders: orderService.getOrders(),
   customers: customerService.getCustomers(),
   currentCustomer: null,
+  customerCart: [],
   systemMessages: INITIAL_MESSAGES,
   activeOutletId: 'out-1',
 
@@ -651,6 +671,38 @@ export const useStore = create<RenoState>((set, get) => ({
     get().pushMessage('Cập nhật đơn hàng', `${orderId} chuyển sang trạng thái ${status}.`, status === 'Completed' ? 'success' : 'info');
   },
 
+  addCustomerCartItem: (recipeId) => {
+    const recipe = get().recipes.find((item) => item.id === recipeId);
+    if (!recipe || !recipe.available) return;
+
+    set((state) => {
+      const current = state.customerCart.find((item) => item.id === recipe.id);
+      if (current) {
+        return {
+          customerCart: state.customerCart.map((item) =>
+            item.id === recipe.id ? { ...item, quantity: item.quantity + 1 } : item,
+          ),
+        };
+      }
+
+      return {
+        customerCart: [
+          ...state.customerCart,
+          { id: recipe.id, name: recipe.name, price: recipe.price, quantity: 1 },
+        ],
+      };
+    });
+  },
+
+  updateCustomerCartItemQuantity: (id, qtyDelta) =>
+    set((state) => ({
+      customerCart: state.customerCart
+        .map((item) => (item.id === id ? { ...item, quantity: item.quantity + qtyDelta } : item))
+        .filter((item) => item.quantity > 0),
+    })),
+
+  clearCustomerCart: () => set({ customerCart: [] }),
+
   loginCustomer: ({ phone, name, email }) => {
     const normalizedPhone = normalizeCustomerPhone(phone);
     if (!normalizedPhone) return null;
@@ -699,6 +751,27 @@ export const useStore = create<RenoState>((set, get) => ({
   },
 
   logoutCustomer: () => set({ currentCustomer: null }),
+
+  redeemCustomerReward: (reward, orderId) => {
+    const customer = get().currentCustomer;
+    if (!customer || customer.pointsBalance < reward.points) return null;
+
+    const pointsBalance = customer.pointsBalance - reward.points;
+    const updated: Customer = {
+      ...customer,
+      pointsBalance,
+      pointHistory: [createRewardHistoryEntry(reward, pointsBalance, orderId), ...customer.pointHistory],
+    };
+
+    customerService.updateCustomer(updated);
+    set((state) => ({
+      customers: state.customers.map((item) => (item.id === updated.id ? updated : item)),
+      currentCustomer: updated,
+    }));
+    get().pushMessage('Đã đổi điểm', `${customer.name} đã đổi ${reward.points} điểm lấy ${reward.name}.`, 'success');
+
+    return updated;
+  },
 
   addCustomer: (customerData) => {
     const added = customerService.addCustomer(customerData);

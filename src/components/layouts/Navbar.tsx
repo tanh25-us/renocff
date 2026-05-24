@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bell, Check, ChevronDown, Menu, Settings, UserRound } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Check, ChevronDown, LogOut, Menu, Settings, UserRound } from 'lucide-react';
 import { ROLE_PERMISSIONS, useStore } from '../../store';
 import { AppRouteId } from '../../types';
 import { Badge, Button } from '../ui';
@@ -11,11 +12,12 @@ interface NavbarProps {
 
 const ROUTE_LABELS: Record<AppRouteId, string> = {
   storefront: 'Cửa hàng',
-  dashboard: 'Dashboard',
-  orders: 'Orders',
-  menu: 'Menu',
-  customers: 'Customers',
-  branches: 'Branches',
+  checkout: 'Thanh toán',
+  dashboard: 'Tổng quan',
+  orders: 'Đơn hàng',
+  menu: 'Thực đơn',
+  customers: 'Khách hàng',
+  branches: 'Chi nhánh',
 };
 
 const permissionLabels: Record<string, string> = {
@@ -36,11 +38,17 @@ function allowedText(role: keyof typeof ROLE_PERMISSIONS) {
 }
 
 export default function Navbar({ currentTab, onOpenSidebar }: NavbarProps) {
-  const { currentRole, currentUser, setRole, systemMessages, dismissMessage } = useStore();
+  const { currentRole, currentUser, setRole, systemMessages, dismissMessage, logout } = useStore();
+  const navigate = useNavigate();
   const [timeStr, setTimeStr] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoles, setShowRoles] = useState(false);
   const routeLabel = ROUTE_LABELS[currentTab] || 'Management Suite';
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   useEffect(() => {
     const tick = () => setTimeStr(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }));
@@ -101,6 +109,15 @@ export default function Navbar({ currentTab, onOpenSidebar }: NavbarProps) {
         <Button variant="ghost" size="icon" aria-label="Cài đặt">
           <Settings className="h-5 w-5" />
         </Button>
+
+        <button
+          onClick={handleLogout}
+          className="grid h-10 w-10 place-items-center rounded-full border border-[#d3c3bd] text-[#81756f] hover:bg-[#ffdad6] hover:text-[#93000a] transition"
+          aria-label="Đăng xuất"
+          title="Đăng xuất"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
 
         <div className="relative">
           <button

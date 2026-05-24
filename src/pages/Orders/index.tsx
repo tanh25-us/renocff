@@ -1,91 +1,209 @@
 import { useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
-import { Clock, Minus, Plus, ReceiptText, Search, ShoppingBag, Trash2 } from 'lucide-react';
+import { Clock, Minus, Plus, ReceiptText, Search, ShoppingBag, Trash2, Wifi, Store } from 'lucide-react';
 import PermissionGuard from '../../components/common/PermissionGuard';
-import { Button } from '../../components/ui';
-import { Badge } from '../../components/ui';
-import { Card, CardContent, CardHeader } from '../../components/ui';
-import { Field, Input, Select } from '../../components/ui';
-import { formatCurrency, nextOrderStatus } from '../../lib/utils';
+import { Button, Badge, Card, CardContent, CardHeader, Field, Input, Select } from '../../components/ui';
+import { formatCurrency } from '../../lib/utils';
+import { PRODUCTS, PRODUCT_CATEGORIES } from '../../lib/products';
+import type { ProductCategory } from '../../lib/products';
 import { useStore } from '../../store';
-import { OrderChannel, OrderItem, OrderStatus, PaymentMethod } from '../../types';
+import { OrderChannel, OrderStatus, PaymentMethod } from '../../types';
 
-type CartItem = OrderItem & { id: string };
-
-const statusFilters: Array<'All' | OrderStatus> = ['All', 'Pending', 'Brewing', 'Ready', 'Completed'];
+// ── Helpers ────────────────────────────────────────────────────────────────
+const STATUS_LABEL: Record<OrderStatus, string> = {
+  Pending: 'Mới nhận', Brewing: 'Đang pha', Ready: 'Sẵn sàng', Completed: 'Hoàn tất', Cancelled: 'Đã hủy',
+};
+const STATUS_NEXT: Partial<Record<OrderStatus, { label: string; next: OrderStatus }>> = {
+  Pending:  { label: 'Bắt đầu pha', next: 'Brewing' },
+  Brewing:  { label: 'Hoàn thành',  next: 'Ready' },
+  Ready:    { label: 'Giao xong',   next: 'Completed' },
+};
 
 function StatusBadge({ status }: { status: OrderStatus }) {
-  const label: Record<OrderStatus, string> = {
-    Pending: 'Mới nhận',
-    Brewing: 'Đang pha',
-    Ready: 'Sẵn sàng',
-    Completed: 'Hoàn tất',
-    Cancelled: 'Đã hủy',
-  };
   const tone = status === 'Completed' ? 'success' : status === 'Brewing' ? 'warning' : status === 'Cancelled' ? 'danger' : status === 'Ready' ? 'primary' : 'neutral';
-  return <Badge tone={tone}>{label[status]}</Badge>;
+  return <Badge tone={tone}>{STATUS_LABEL[status]}</Badge>;
 }
 
-function channelLabel(order: { channel: OrderChannel; pickupTime?: string; deliveryAddress?: string }) {
-  if (order.channel === 'Pickup') return `Pickup ${order.pickupTime || ''}`;
-  if (order.channel === 'Delivery') return order.deliveryAddress ? `Giao hàng · ${order.deliveryAddress}` : 'Giao hàng';
-  return 'Uống tại quán';
+type PosCartItem = { id: string; name: string; price: number; quantity: number; image: string };
+
+// ── POS Menu ───────────────────────────────────────────────────────────────
+function PosMenu({ onAdd }: { onAdd: (item: Omit<PosCartItem, 'quantity'>) => void }) {
+  const { recipes } = useStore();
+  const [cat, setCat] = useState<ProductCategory>('all');
+
+  // Lấy availability từ store (đồng bộ với admin toggle)
+  const availMap = useMemo(() => {
+    const m: Record<string, boolean> = {};
+    recipes.forEach((r) => { m[r.name] = r.available; });
+    return m;
+  }, [recipes]);
+
+  const filtered = useMemo(() =>
+    (cat === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === cat))
+      .filter((p) => availMap[p.name] !== false),
+    [cat, availMap],
+  );
+
+  return (
+    <Card>
+      <CardHeader className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-xl font-bold">Thực đơn POS</h2>
+            <p className="mt-1 text-sm text-[#4f4540]">Click món để thêm vào biên lai.</p>
+          </div>
+          <Badge tone="primary">{filtered.length} món đang bán</Badge>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {PRODUCT_CATEGORIES.map(({ key, label }) => (
+            <button key={key} onClick={() => setCat(key)}
+              className={`min-h-9 rounded-full border px-3 text-xs font-semibold transition ${cat === key ? 'border-[#25160e] bg-[#25160e] text-white' : 'border-[#d3c3bd] bg-white text-[#4f4540] hover:bg-[#f6f3f2]'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((p) => (
+            <button key={p.id} onClick={() => onAdd({ id: p.id, name: p.name, price: p.price, image: p.image })}
+              className="flex items-center gap-3 rounded-xl border border-[#d3c3bd] bg-white p-3 text-left transition hover:border-[#81756f] hover:bg-[#f6f3f2]">
+              <img src={p.image} alt={p.name} className="h-14 w-14 rounded-lg object-cover" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold">{p.name}</span>
+                <span className="mt-1 block font-display text-sm font-bold text-[#25160e]">{formatCurrency(p.price)}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
+// ── Order Queue ────────────────────────────────────────────────────────────
+function OrderQueue() {
+  const { orders, activeOutletId, updateOrderStatus } = useStore();
+  const [filter, setFilter] = useState<'All' | OrderStatus>('All');
+  const [query, setQuery] = useState('');
+
+  const statusFilters: Array<'All' | OrderStatus> = ['All', 'Pending', 'Brewing', 'Ready', 'Completed'];
+
+  const visible = orders.filter((o) => {
+    const sameOutlet = o.outletId === activeOutletId;
+    const sameStatus = filter === 'All' || o.status === filter;
+    const sameQuery = !query || [o.id, o.customerName, o.customerPhone || ''].join(' ').toLowerCase().includes(query.toLowerCase());
+    return sameOutlet && sameStatus && sameQuery;
+  });
+
+  const pendingCount = orders.filter((o) => o.outletId === activeOutletId && o.status === 'Pending').length;
+
+  return (
+    <Card>
+      <CardHeader className="space-y-4">
+        <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+          <div>
+            <h2 className="font-display text-xl font-bold">
+              Hàng chờ đơn hàng
+              {pendingCount > 0 && (
+                <span className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#ba1a1a] text-xs font-bold text-white">{pendingCount}</span>
+              )}
+            </h2>
+            <p className="mt-1 text-sm text-[#4f4540]">Cập nhật trạng thái từ mới nhận đến hoàn tất.</p>
+          </div>
+          <div className="relative w-full lg:w-72">
+            <Search className="absolute left-3 top-3.5 h-4 w-4 text-[#81756f]" />
+            <Input className="pl-10" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã đơn, tên, SĐT" />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {statusFilters.map((s) => (
+            <button key={s} onClick={() => setFilter(s)}
+              className={`min-h-9 rounded-full border px-4 text-sm font-semibold transition ${filter === s ? 'border-[#25160e] bg-[#25160e] text-white' : 'border-[#d3c3bd] bg-white text-[#4f4540] hover:bg-[#f6f3f2]'}`}>
+              {s === 'All' ? 'Tất cả' : STATUS_LABEL[s]}
+            </button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {visible.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-[#d3c3bd] p-8 text-center text-sm text-[#81756f]">Không có đơn phù hợp.</div>
+        ) : (
+          visible.map((order) => {
+            const nextAction = STATUS_NEXT[order.status];
+            const isOnline = order.source === 'Website' || order.source === 'MobileApp';
+            return (
+              <div key={order.id} className={`rounded-xl border bg-white p-4 ${order.status === 'Pending' && isOnline ? 'border-[#ba1a1a]/40 bg-[#fff8f7]' : 'border-[#d3c3bd]'}`}>
+                <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-display text-base font-bold">{order.id}</p>
+                      <StatusBadge status={order.status} />
+                      <Badge tone={isOnline ? 'primary' : 'neutral'}>
+                        {isOnline ? <><Wifi className="mr-1 inline h-3 w-3" />Online</> : <><Store className="mr-1 inline h-3 w-3" />Tại quán</>}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm font-semibold">{order.customerName}
+                      {order.customerPhone && <span className="ml-2 text-xs font-normal text-[#81756f]">{order.customerPhone}</span>}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[#4f4540]">
+                      {order.items.map((i) => `${i.name} x${i.quantity}`).join(' · ')}
+                    </p>
+                    <p className="mt-1 flex items-center gap-1 text-xs text-[#81756f]">
+                      <Clock className="h-3.5 w-3.5" />{order.orderTime}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 md:flex-col md:items-end">
+                    <p className="font-display text-lg font-bold">{formatCurrency(order.total)}</p>
+                    {nextAction && (
+                      <PermissionGuard permission="canManageOrders" displayMode="overlay">
+                        <Button size="sm" onClick={() => updateOrderStatus(order.id, nextAction.next)} className="whitespace-nowrap">
+                          {nextAction.label}
+                        </Button>
+                      </PermissionGuard>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Orders Page ────────────────────────────────────────────────────────────
 export default function Orders() {
-  const { recipes, orders, customers, outlets, activeOutletId, addOrder, updateOrderStatus } = useStore();
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const { customers, outlets, activeOutletId, addOrder } = useStore();
+  const [cart, setCart] = useState<PosCartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [channel, setChannel] = useState<OrderChannel>('DineIn');
   const [pickupTime, setPickupTime] = useState('10:00');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Card');
-  const [filter, setFilter] = useState<'All' | OrderStatus>('All');
-  const [query, setQuery] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [receiptId, setReceiptId] = useState('');
   const [formError, setFormError] = useState('');
 
-  const activeOutlet = outlets.find((outlet) => outlet.id === activeOutletId) || outlets[0];
-  const total = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
+  const activeOutlet = outlets.find((o) => o.id === activeOutletId) || outlets[0];
+  const total = useMemo(() => cart.reduce((s, i) => s + i.price * i.quantity, 0), [cart]);
 
-  const visibleOrders = orders.filter((order) => {
-    const sameOutlet = order.outletId === activeOutletId;
-    const sameStatus = filter === 'All' || order.status === filter;
-    const sameQuery = !query || [order.id, order.customerName, order.customerPhone || ''].join(' ').toLowerCase().includes(query.toLowerCase());
-    return sameOutlet && sameStatus && sameQuery;
-  });
-
-  const addToCart = (recipeId: string) => {
-    const recipe = recipes.find((item) => item.id === recipeId);
-    if (!recipe || !recipe.available) return;
-    setCart((items) => {
-      const current = items.find((item) => item.id === recipe.id);
-      if (current) return items.map((item) => (item.id === recipe.id ? { ...item, quantity: item.quantity + 1 } : item));
-      return [...items, { id: recipe.id, name: recipe.name, price: recipe.price, quantity: 1 }];
+  const addToCart = (item: Omit<PosCartItem, 'quantity'>) => {
+    setCart((prev) => {
+      const existing = prev.find((c) => c.id === item.id);
+      if (existing) return prev.map((c) => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
+      return [...prev, { ...item, quantity: 1 }];
     });
   };
 
   const changeQty = (id: string, delta: number) => {
-    setCart((items) =>
-      items
-        .map((item) => (item.id === id ? { ...item, quantity: item.quantity + delta } : item))
-        .filter((item) => item.quantity > 0),
-    );
+    setCart((prev) => prev.map((c) => c.id === id ? { ...c, quantity: c.quantity + delta } : c).filter((c) => c.quantity > 0));
   };
 
-  const chooseCustomer = (phone: string) => {
-    const customer = customers.find((item) => item.phone === phone);
-    if (!customer) return;
-    setCustomerName(customer.name);
-    setCustomerPhone(customer.phone);
-  };
-
-  const submitOrder = (event: FormEvent) => {
-    event.preventDefault();
+  const submitOrder = () => {
     setFormError('');
     if (!cart.length) return;
     if (!customerName.trim() || !customerPhone.trim()) {
-      setFormError('Cần có họ tên và số điện thoại khách hàng để tạo đơn.');
+      setFormError('Cần có họ tên và số điện thoại để tạo đơn.');
       return;
     }
     try {
@@ -95,7 +213,7 @@ export default function Orders() {
         channel,
         pickupTime: channel === 'Pickup' ? pickupTime : undefined,
         source: 'POS',
-        items: cart,
+        items: cart.map(({ id, name, price, quantity }) => ({ id, name, price, quantity })),
         status: 'Pending',
         total,
         outletId: activeOutletId,
@@ -105,243 +223,139 @@ export default function Orders() {
       setCart([]);
       setCustomerName('');
       setCustomerPhone('');
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Không thể tạo đơn hàng.');
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'Không thể tạo đơn.');
     }
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
-      <div className="space-y-6">
-        <section>
-          <p className="label-caps text-[#6d5b4c]">POS Orders</p>
-          <h1 className="font-display mt-2 text-4xl font-bold">Đặt hàng và điều phối quầy</h1>
-          <p className="mt-2 text-sm text-[#4f4540]">{activeOutlet.name} · {activeOutlet.address}</p>
-        </section>
+    <div className="space-y-6">
+      <section>
+        <p className="label-caps text-[#6d5b4c]">POS Orders</p>
+        <h1 className="font-display mt-2 text-4xl font-bold">Đặt hàng và điều phối quầy</h1>
+        <p className="mt-2 text-sm text-[#4f4540]">{activeOutlet.name} · {activeOutlet.address}</p>
+      </section>
 
-        <Card>
-          <CardHeader className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="font-display text-xl font-bold">Thực đơn POS</h2>
-              <p className="mt-1 text-sm text-[#4f4540]">Chọn món để tạo hóa đơn tại quầy.</p>
-            </div>
-            <Badge tone="primary">{recipes.filter((item) => item.available).length} món đang bán</Badge>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {recipes.map((recipe) => (
-                <button
-                  key={recipe.id}
-                  onClick={() => addToCart(recipe.id)}
-                  disabled={!recipe.available}
-                  className="flex min-h-[104px] items-center gap-3 rounded-xl border border-[#d3c3bd] bg-white p-3 text-left transition hover:border-[#81756f] hover:bg-[#f6f3f2] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <img src={recipe.image} alt={recipe.name} className="h-16 w-16 rounded-lg object-cover" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold">{recipe.name}</span>
-                    <span className="mt-1 block text-xs text-[#4f4540]">{recipe.type}</span>
-                    <span className="mt-2 block font-display text-sm font-bold">{formatCurrency(recipe.price)}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+        {/* Left: POS Menu + Order Queue */}
+        <div className="space-y-6">
+          <PosMenu onAdd={addToCart} />
+          <OrderQueue />
+        </div>
 
-        <Card>
-          <CardHeader className="space-y-4">
-            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+        {/* Right: POS Cart / Receipt */}
+        <aside>
+          <Card className="sticky top-24 p-5">
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-display text-xl font-bold">Hàng chờ đơn hàng</h2>
-                <p className="mt-1 text-sm text-[#4f4540]">Cập nhật trạng thái từ mới nhận đến hoàn tất.</p>
+                <p className="label-caps text-[#6d5b4c]">Biên lai POS</p>
+                <h2 className="font-display mt-1 text-2xl font-bold">Tạo đơn mới</h2>
               </div>
-              <div className="relative w-full lg:w-80">
-                <Search className="absolute left-3 top-3.5 h-4 w-4 text-[#81756f]" />
-                <Input className="pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm mã đơn, tên, SĐT" />
-              </div>
+              <ReceiptText className="h-6 w-6 text-[#25160e]" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              {statusFilters.map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setFilter(status)}
-                  className={`min-h-10 rounded-full border px-4 text-sm font-semibold ${
-                    filter === status ? 'border-[#25160e] bg-[#25160e] text-white' : 'border-[#d3c3bd] bg-white text-[#4f4540] hover:bg-[#f6f3f2]'
-                  }`}
-                >
-                  {status === 'All' ? 'Tất cả' : status}
-                </button>
-              ))}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {visibleOrders.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#d3c3bd] p-8 text-center text-sm text-[#81756f]">Không có đơn phù hợp.</div>
-            ) : (
-              visibleOrders.map((order) => (
-                <div key={order.id} className="rounded-xl border border-[#d3c3bd] bg-white p-4">
-                  <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-display text-lg font-bold">{order.id}</p>
-                        <StatusBadge status={order.status} />
-                        <Badge tone={order.channel === 'Pickup' || order.channel === 'Delivery' ? 'primary' : 'neutral'}>
-                          {channelLabel(order)}
-                        </Badge>
-                      </div>
-                      <p className="mt-2 text-sm font-semibold">{order.customerName}</p>
-                      <p className="mt-1 text-xs leading-5 text-[#4f4540]">
-                        {order.items.map((item) => `${item.name} x${item.quantity}`).join(' · ')}
-                      </p>
-                    </div>
 
-                    <div className="flex items-center justify-between gap-4 md:justify-end">
-                      <div className="text-right">
-                        <p className="font-display text-lg font-bold">{formatCurrency(order.total)}</p>
-                        <p className="mt-1 flex items-center justify-end gap-1 text-xs text-[#4f4540]">
-                          <Clock className="h-3.5 w-3.5" />
-                          {order.orderTime}
-                        </p>
-                      </div>
-                      {order.status !== 'Completed' && order.status !== 'Cancelled' && (
-                        <PermissionGuard permission="canManageOrders" displayMode="overlay">
-                          <Button
-                            onClick={() => updateOrderStatus(order.id, nextOrderStatus(order.status) as OrderStatus)}
-                            className="whitespace-nowrap"
-                          >
-                            Cập nhật
-                          </Button>
-                        </PermissionGuard>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <aside className="space-y-6">
-        <Card className="sticky top-24 p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="label-caps text-[#6d5b4c]">Biên lai</p>
-              <h2 className="font-display mt-1 text-2xl font-bold">Tạo đơn mới</h2>
-            </div>
-            <ReceiptText className="h-6 w-6 text-[#25160e]" />
-          </div>
-
-          <form onSubmit={submitOrder} className="mt-5 space-y-5">
-            <div className="grid grid-cols-2 rounded-xl border border-[#d3c3bd] bg-[#f6f3f2] p-1">
-              {[
-                ['DineIn', 'Tại quán'],
-                ['Pickup', 'Pickup'],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold ${
-                    channel === key ? 'bg-white text-[#25160e] shadow-sm' : 'text-[#4f4540]'
-                  }`}
-                  onClick={() => setChannel(key as OrderChannel)}
-                >
+            {/* Channel toggle */}
+            <div className="mt-5 grid grid-cols-2 rounded-xl border border-[#d3c3bd] bg-[#f6f3f2] p-1">
+              {[['DineIn', 'Tại quán'], ['Pickup', 'Pickup']].map(([key, label]) => (
+                <button key={key} type="button"
+                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${channel === key ? 'bg-white text-[#25160e] shadow-sm' : 'text-[#4f4540]'}`}
+                  onClick={() => setChannel(key as OrderChannel)}>
                   {label}
                 </button>
               ))}
             </div>
 
-            <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+            {/* Cart items */}
+            <div className="mt-4 max-h-64 space-y-3 overflow-y-auto pr-1">
               {cart.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#d3c3bd] p-6 text-center text-sm text-[#81756f]">
-                  <ShoppingBag className="mx-auto mb-2 h-8 w-8" />
-                  Giỏ đang trống.
+                <div className="rounded-xl border border-dashed border-[#d3c3bd] p-5 text-center text-sm text-[#81756f]">
+                  <ShoppingBag className="mx-auto mb-2 h-7 w-7 opacity-40" />
+                  Giỏ đang trống
                 </div>
-              ) : (
-                cart.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3 border-b border-[#f0eded] pb-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold">{item.name}</p>
-                      <p className="mt-1 text-xs text-[#4f4540]">{formatCurrency(item.price)}</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#d3c3bd]" onClick={() => changeQty(item.id, -1)}>
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <span className="w-7 text-center text-sm font-bold">{item.quantity}</span>
-                      <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#d3c3bd]" onClick={() => changeQty(item.id, 1)}>
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </div>
+              ) : cart.map((item) => (
+                <div key={item.id} className="flex items-center gap-3 border-b border-[#f0eded] pb-3">
+                  <img src={item.image} alt={item.name} className="h-10 w-10 rounded-lg object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{item.name}</p>
+                    <p className="text-xs text-[#4f4540]">{formatCurrency(item.price)}</p>
                   </div>
-                ))
-              )}
+                  <div className="flex items-center gap-1">
+                    <button className="grid h-8 w-8 place-items-center rounded-lg border border-[#d3c3bd]" onClick={() => changeQty(item.id, -1)}>
+                      <Minus className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
+                    <button className="grid h-8 w-8 place-items-center rounded-lg border border-[#d3c3bd]" onClick={() => changeQty(item.id, 1)}>
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {cart.length > 0 && (
-              <button type="button" className="inline-flex min-h-9 items-center gap-2 text-xs font-semibold text-[#93000a]" onClick={() => setCart([])}>
-                <Trash2 className="h-4 w-4" />
-                Xóa giỏ
+              <button className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#93000a]" onClick={() => setCart([])}>
+                <Trash2 className="h-3.5 w-3.5" /> Xóa giỏ
               </button>
             )}
 
-            <div className="grid gap-3">
+            {/* Customer info */}
+            <div className="mt-4 space-y-3">
               <Field label="Khách quen">
-                <Select value="" onChange={(event) => chooseCustomer(event.target.value)}>
+                <Select value="" onChange={(e) => {
+                  const c = customers.find((x) => x.phone === e.target.value);
+                  if (c) { setCustomerName(c.name); setCustomerPhone(c.phone); }
+                }}>
                   <option value="">Chọn nhanh</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.phone}>{customer.name} · {customer.loyaltyTier}</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.phone}>{c.name} · {c.loyaltyTier}</option>
                   ))}
                 </Select>
               </Field>
               <Field label="Tên khách">
-                <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Tên khách" />
+                <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Tên khách" />
               </Field>
               <Field label="Số điện thoại">
-                <Input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09xx xxx xxx" />
+                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="09xx xxx xxx" />
               </Field>
               {channel === 'Pickup' && (
                 <Field label="Giờ lấy">
-                  <Input type="time" value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} />
+                  <Input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
                 </Field>
               )}
               <Field label="Thanh toán">
-                <Select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}>
+                <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
+                  <option value="Cash">Tiền mặt</option>
                   <option value="Card">Thẻ POS</option>
                   <option value="Banking">Chuyển khoản</option>
                   <option value="Wallet">Ví điện tử</option>
-                  <option value="Cash">Tiền mặt</option>
                 </Select>
               </Field>
             </div>
 
-            <div className="rounded-xl bg-[#f6f3f2] p-4">
+            {/* Total */}
+            <div className="mt-4 rounded-xl bg-[#f6f3f2] p-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-[#4f4540]">Tổng</span>
                 <span className="font-display text-2xl font-bold">{formatCurrency(total)}</span>
               </div>
             </div>
 
+            {formError && <p className="mt-3 rounded-xl bg-[#ffdad6] px-3 py-2 text-sm font-semibold text-[#93000a]">{formError}</p>}
+
             <PermissionGuard permission="canManageOrders" displayMode="inline-alert">
-              <Button type="submit" className="w-full" disabled={!cart.length || !customerName.trim() || !customerPhone.trim()}>
+              <Button className="mt-4 w-full" disabled={!cart.length || !customerName.trim() || !customerPhone.trim()} onClick={submitOrder}>
                 Xuất biên lai
               </Button>
             </PermissionGuard>
 
-            {formError && (
-              <div className="rounded-xl bg-[#ffdad6] p-3 text-sm font-semibold text-[#93000a]">
-                {formError}
-              </div>
-            )}
-
             {receiptId && (
-              <div className="rounded-xl border border-[#b7cdb8] bg-[#dfeadc] p-3 text-sm font-semibold text-[#26442f]">
-                Đơn {receiptId} đã vào hàng chờ.
+              <div className="mt-3 rounded-xl border border-[#b7cdb8] bg-[#dfeadc] p-3 text-sm font-semibold text-[#26442f]">
+                ✓ Đơn {receiptId} đã vào hàng chờ.
               </div>
             )}
-          </form>
-        </Card>
-      </aside>
+          </Card>
+        </aside>
+      </div>
     </div>
   );
 }

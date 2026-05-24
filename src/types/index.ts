@@ -1,5 +1,5 @@
 export type MenuCategory = 'Coffee' | 'Cold Brew' | 'Tea' | 'Pastry' | 'Retail';
-export type AppRouteId = 'storefront' | 'dashboard' | 'orders' | 'menu' | 'customers' | 'branches';
+export type AppRouteId = 'storefront' | 'checkout' | 'dashboard' | 'orders' | 'menu' | 'customers' | 'branches';
 export type OrderChannel = 'DineIn' | 'Pickup' | 'Delivery';
 export type OrderSource = 'Website' | 'MobileApp' | 'POS';
 export type OrderStatus = 'Pending' | 'Brewing' | 'Ready' | 'Completed' | 'Cancelled';
@@ -85,6 +85,17 @@ export interface OrderItem {
   price: number;
 }
 
+export interface CartItem extends OrderItem {
+  id: string;
+}
+
+export interface LoyaltyReward {
+  id: string;
+  name: string;
+  points: number;
+  description: string;
+}
+
 export interface Order {
   id: string;
   customerName: string;
@@ -100,6 +111,7 @@ export interface Order {
   total: number;
   outletId: string;
   paymentMethod: PaymentMethod;
+  redeemedReward?: LoyaltyReward;
 }
 
 export interface LoyaltyPointEntry {

@@ -3,65 +3,45 @@ import type { FormEvent } from 'react';
 import {
   Clock,
   Gift,
-  Globe2,
   History,
   LogIn,
   LogOut,
   MapPin,
-  Minus,
   Phone,
   Plus,
   ShoppingBag,
-  Smartphone,
-  Trash2,
-  Truck,
   UserRound,
 } from 'lucide-react';
-import { Badge, Button, Card, Field, Input, Select } from '../../components/ui';
+import { Badge, Button, Card, Field, Input } from '../../components/ui';
 import { formatCurrency } from '../../lib/utils';
 import { useStore } from '../../store';
-import { OrderChannel, OrderItem, OrderSource, PaymentMethod } from '../../types';
 
-type CartItem = OrderItem & { id: string };
+interface StorefrontProps {
+  onCheckout: () => void;
+}
 
-const channelOptions: Array<{ id: OrderChannel; label: string; icon: typeof ShoppingBag }> = [
-  { id: 'Pickup', label: 'Nhận tại quán', icon: ShoppingBag },
-  { id: 'Delivery', label: 'Giao hàng', icon: Truck },
-];
-
-const sourceOptions: Array<{ id: OrderSource; label: string; icon: typeof Globe2 }> = [
-  { id: 'Website', label: 'Website', icon: Globe2 },
-  { id: 'MobileApp', label: 'Mobile app', icon: Smartphone },
-];
-
-export default function Storefront() {
+export default function Storefront({ onCheckout }: StorefrontProps) {
   const {
     recipes,
     outlets,
     activeOutletId,
     setActiveOutlet,
-    addOrder,
     currentCustomer,
     loginCustomer,
     logoutCustomer,
+    customerCart,
+    addCustomerCartItem,
   } = useStore();
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [channel, setChannel] = useState<OrderChannel>('Pickup');
-  const [source, setSource] = useState<OrderSource>('Website');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Banking');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
-  const [pickupTime, setPickupTime] = useState('09:30');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [authError, setAuthError] = useState('');
-  const [formError, setFormError] = useState('');
-  const [confirmedOrder, setConfirmedOrder] = useState('');
 
   const activeOutlet = outlets.find((outlet) => outlet.id === activeOutletId) || outlets[0];
   const availableRecipes = recipes.filter((recipe) => recipe.available);
   const featured = availableRecipes.slice(0, 4);
-  const total = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
+  const cartCount = useMemo(() => customerCart.reduce((sum, item) => sum + item.quantity, 0), [customerCart]);
+  const total = useMemo(() => customerCart.reduce((sum, item) => sum + item.price * item.quantity, 0), [customerCart]);
   const pendingPoints = Math.floor(total / 10000);
 
   useEffect(() => {
@@ -70,26 +50,6 @@ export default function Storefront() {
     setCustomerPhone(currentCustomer.phone);
     setCustomerEmail(currentCustomer.email || '');
   }, [currentCustomer]);
-
-  const addToCart = (id: string) => {
-    const recipe = recipes.find((item) => item.id === id);
-    if (!recipe || !recipe.available) return;
-    setCart((items) => {
-      const current = items.find((item) => item.id === recipe.id);
-      if (current) {
-        return items.map((item) => (item.id === recipe.id ? { ...item, quantity: item.quantity + 1 } : item));
-      }
-      return [...items, { id: recipe.id, name: recipe.name, price: recipe.price, quantity: 1 }];
-    });
-  };
-
-  const changeQty = (id: string, delta: number) => {
-    setCart((items) =>
-      items
-        .map((item) => (item.id === id ? { ...item, quantity: item.quantity + delta } : item))
-        .filter((item) => item.quantity > 0),
-    );
-  };
 
   const handleCustomerLogin = (event: FormEvent) => {
     event.preventDefault();
@@ -102,66 +62,6 @@ export default function Storefront() {
 
     if (!customer) {
       setAuthError('Nhập số điện thoại đã đăng ký, hoặc nhập thêm họ tên để tạo hồ sơ mới.');
-      return;
-    }
-
-    setConfirmedOrder('');
-  };
-
-  const submitOrder = (event: FormEvent) => {
-    event.preventDefault();
-    setFormError('');
-    setConfirmedOrder('');
-
-    const name = customerName.trim();
-    const phone = customerPhone.trim();
-    const email = customerEmail.trim();
-    const address = deliveryAddress.trim();
-
-    if (!cart.length) {
-      setFormError('Giỏ hàng đang trống.');
-      return;
-    }
-
-    if (!name || !phone) {
-      setFormError('Cần có họ tên và số điện thoại khách hàng trước khi đặt.');
-      return;
-    }
-
-    if (channel === 'Delivery' && !address) {
-      setFormError('Đơn giao hàng cần có địa chỉ nhận hàng.');
-      return;
-    }
-
-    if (!currentCustomer) {
-      const customer = loginCustomer({ phone, name, email });
-      if (!customer) {
-        setFormError('Không thể tạo hồ sơ khách hàng từ thông tin hiện tại.');
-        return;
-      }
-    }
-
-    try {
-      const order = addOrder({
-        customerName: name,
-        customerPhone: phone,
-        customerEmail: email || undefined,
-        channel,
-        pickupTime: channel === 'Pickup' ? pickupTime : undefined,
-        deliveryAddress: channel === 'Delivery' ? address : undefined,
-        source,
-        items: cart,
-        status: 'Pending',
-        total,
-        outletId: activeOutletId,
-        paymentMethod,
-      });
-
-      setConfirmedOrder(order.id);
-      setCart([]);
-      if (channel === 'Delivery') setDeliveryAddress('');
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Không thể tạo đơn hàng.');
     }
   };
 
@@ -170,28 +70,28 @@ export default function Storefront() {
       <section className="grid overflow-hidden rounded-2xl border border-[#cbd5d1] bg-[#10201f] text-white lg:grid-cols-[0.95fr_1.05fr]">
         <div className="flex min-h-[440px] flex-col justify-between p-6 sm:p-9 lg:p-11">
           <div>
-            <p className="label-caps text-[#9fd6cd]">Reno Online Ordering</p>
+            <p className="label-caps text-[#9fd6cd]">Đặt hàng online</p>
             <h1 className="font-display mt-4 max-w-2xl text-4xl font-extrabold leading-tight sm:text-5xl">
-              Đặt món trên website hoặc ứng dụng, tích điểm theo từng đơn.
+              Khách hàng chọn món trên website, tích điểm và thanh toán trong giỏ riêng.
             </h1>
             <p className="mt-5 max-w-xl text-sm leading-7 text-white/80">
-              Hồ sơ khách hàng được dùng để lưu lịch sử điểm, đồng bộ đơn pickup và đơn giao hàng trong hệ thống Reno.
+              Hồ sơ khách hàng lưu lịch sử điểm, đơn pickup, đơn giao hàng và quà đã đổi trong Reno Club.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button
                 className="bg-white text-[#10201f] hover:bg-[#d8f3ee]"
-                onClick={() => document.getElementById('order-panel')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => document.getElementById('menu-section')?.scrollIntoView({ behavior: 'smooth' })}
               >
                 <ShoppingBag className="h-4 w-4" />
-                Đặt hàng
+                Chọn món
               </Button>
               <Button
                 variant="secondary"
                 className="border-white/30 text-white hover:bg-white/10"
-                onClick={() => document.getElementById('customer-panel')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={onCheckout}
               >
-                <UserRound className="h-4 w-4" />
-                Tài khoản khách
+                <ShoppingBag className="h-4 w-4" />
+                Thanh toán giỏ {cartCount > 0 ? `(${cartCount})` : ''}
               </Button>
             </div>
           </div>
@@ -221,8 +121,8 @@ export default function Storefront() {
         <Card className="p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="label-caps text-[#0f766e]">Customer Login</p>
-              <h2 className="font-display mt-2 text-2xl font-bold">Tài khoản khách hàng</h2>
+              <p className="label-caps text-[#0f766e]">Tài khoản</p>
+              <h2 className="font-display mt-2 text-2xl font-bold">Hồ sơ khách hàng</h2>
             </div>
             <div className="grid h-11 w-11 place-items-center rounded-full bg-[#d8f3ee] text-[#0f766e]">
               <UserRound className="h-5 w-5" />
@@ -283,8 +183,8 @@ export default function Storefront() {
         <Card className="p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="label-caps text-[#0f766e]">Loyalty</p>
-              <h2 className="font-display mt-2 text-2xl font-bold">Lịch sử tích điểm</h2>
+              <p className="label-caps text-[#0f766e]">Điểm thưởng</p>
+              <h2 className="font-display mt-2 text-2xl font-bold">Lịch sử loyalty</h2>
             </div>
             <div className="grid h-11 w-11 place-items-center rounded-full bg-[#d8f3ee] text-[#0f766e]">
               <History className="h-5 w-5" />
@@ -315,7 +215,7 @@ export default function Storefront() {
             </div>
           ) : (
             <div className="mt-5 rounded-xl border border-dashed border-[#cbd5d1] p-8 text-center text-sm text-[#64716d]">
-              Đăng nhập bằng số điện thoại để xem điểm và lịch sử của bạn.
+              Đăng nhập bằng số điện thoại để xem điểm và đổi quà tại trang thanh toán.
             </div>
           )}
         </Card>
@@ -324,8 +224,8 @@ export default function Storefront() {
       <section id="menu-section" className="space-y-5">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
-            <p className="label-caps text-[#0f766e]">Online Menu</p>
-            <h2 className="font-display mt-2 text-3xl font-bold">Thực đơn đang bán</h2>
+            <p className="label-caps text-[#0f766e]">Thực đơn online</p>
+            <h2 className="font-display mt-2 text-3xl font-bold">Món nổi bật</h2>
           </div>
           <div className="flex flex-wrap gap-2">
             {outlets.map((outlet) => (
@@ -345,45 +245,50 @@ export default function Storefront() {
         </div>
 
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {featured.map((recipe) => (
-            <Card key={recipe.id} className="overflow-hidden">
-              <div className="aspect-[4/3] overflow-hidden bg-[#edf2f0]">
-                <img src={recipe.image} alt={recipe.name} className="h-full w-full object-cover transition duration-300 hover:scale-[1.03]" />
-              </div>
-              <div className="space-y-4 p-4">
-                <div>
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    {recipe.tags.slice(0, 2).map((tag) => <Badge key={tag} tone="primary">{tag}</Badge>)}
+          {featured.map((recipe) => {
+            const quantity = customerCart.find((item) => item.id === recipe.id)?.quantity || 0;
+
+            return (
+              <Card key={recipe.id} className="overflow-hidden">
+                <div className="aspect-[4/3] overflow-hidden bg-[#edf2f0]">
+                  <img src={recipe.image} alt={recipe.name} className="h-full w-full object-cover transition duration-300 hover:scale-[1.03]" />
+                </div>
+                <div className="space-y-4 p-4">
+                  <div>
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {recipe.tags.slice(0, 2).map((tag) => <Badge key={tag} tone="primary">{tag}</Badge>)}
+                      {quantity > 0 && <Badge tone="success">Trong giỏ x{quantity}</Badge>}
+                    </div>
+                    <h3 className="font-display text-lg font-bold">{recipe.name}</h3>
+                    <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#4f5b58]">{recipe.description}</p>
                   </div>
-                  <h3 className="font-display text-lg font-bold">{recipe.name}</h3>
-                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#4f5b58]">{recipe.description}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-display text-lg font-bold">{formatCurrency(recipe.price)}</span>
+                    <Button size="sm" onClick={() => addCustomerCartItem(recipe.id)}>
+                      <Plus className="h-4 w-4" />
+                      Thêm
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-display text-lg font-bold">{formatCurrency(recipe.price)}</span>
-                  <Button size="sm" onClick={() => addToCart(recipe.id)}>
-                    <Plus className="h-4 w-4" />
-                    Thêm
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       </section>
 
-      <section id="order-panel" className="grid gap-6 lg:grid-cols-[1fr_430px]">
+      <section className="grid gap-6 lg:grid-cols-[1fr_430px]">
         <Card className="p-6">
-          <p className="label-caps text-[#0f766e]">Order</p>
-          <h2 className="font-display mt-2 text-3xl font-bold">Chọn món</h2>
+          <p className="label-caps text-[#0f766e]">Đặt món</p>
+          <h2 className="font-display mt-2 text-3xl font-bold">Thực đơn đang bán</h2>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[#4f5b58]">
-            Đơn hàng sẽ được ghi vào hồ sơ khách để cập nhật chi tiêu, hạng thành viên và điểm thưởng.
+            Khách chọn món tại đây, sau đó sang trang thanh toán để nhập thông tin nhận hàng và đổi điểm lấy quà.
           </p>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {availableRecipes.map((recipe) => (
               <button
                 key={recipe.id}
-                onClick={() => addToCart(recipe.id)}
+                onClick={() => addCustomerCartItem(recipe.id)}
                 className="flex min-h-[96px] items-center gap-3 rounded-xl border border-[#cbd5d1] bg-white p-3 text-left transition hover:border-[#0f766e] hover:bg-[#f8fbfa]"
               >
                 <img src={recipe.image} alt={recipe.name} className="h-16 w-16 rounded-lg object-cover" />
@@ -399,142 +304,48 @@ export default function Storefront() {
         <Card className="self-start p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="label-caps text-[#0f766e]">Checkout</p>
-              <h3 className="font-display mt-1 text-xl font-bold">Giỏ hàng</h3>
+              <p className="label-caps text-[#0f766e]">Giỏ khách</p>
+              <h3 className="font-display mt-1 text-xl font-bold">Tóm tắt giỏ hàng</h3>
             </div>
             <ShoppingBag className="h-6 w-6 text-[#10201f]" />
           </div>
 
-          <form onSubmit={submitOrder} className="mt-5 space-y-5">
-            <div className="grid grid-cols-2 rounded-xl border border-[#cbd5d1] bg-[#f8fbfa] p-1">
-              {channelOptions.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setChannel(item.id)}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                      channel === item.id ? 'bg-white text-[#10201f] shadow-sm' : 'text-[#4f5b58]'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="grid grid-cols-2 rounded-xl border border-[#cbd5d1] bg-[#f8fbfa] p-1">
-              {sourceOptions.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setSource(item.id)}
-                    className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                      source === item.id ? 'bg-white text-[#10201f] shadow-sm' : 'text-[#4f5b58]'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
-              {cart.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#cbd5d1] p-6 text-center text-sm text-[#64716d]">Chưa có món trong giỏ.</div>
-              ) : (
-                cart.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-3 border-b border-[#edf2f0] pb-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold">{item.name}</p>
-                      <p className="mt-1 text-xs text-[#4f5b58]">{formatCurrency(item.price)}</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#cbd5d1]" onClick={() => changeQty(item.id, -1)}>
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <span className="w-7 text-center text-sm font-bold">{item.quantity}</span>
-                      <button type="button" className="grid h-9 w-9 place-items-center rounded-lg border border-[#cbd5d1]" onClick={() => changeQty(item.id, 1)}>
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </div>
+          <div className="mt-5 space-y-3">
+            {customerCart.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[#cbd5d1] p-6 text-center text-sm text-[#64716d]">
+                Chưa có món trong giỏ.
+              </div>
+            ) : (
+              customerCart.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 border-b border-[#edf2f0] pb-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold">{item.name}</p>
+                    <p className="mt-1 text-xs text-[#4f5b58]">{formatCurrency(item.price)}</p>
                   </div>
-                ))
-              )}
-            </div>
-
-            {cart.length > 0 && (
-              <button type="button" className="inline-flex min-h-9 items-center gap-2 text-xs font-semibold text-[#93000a]" onClick={() => setCart([])}>
-                <Trash2 className="h-4 w-4" />
-                Xóa giỏ
-              </button>
+                  <span className="rounded-full bg-[#eef8f5] px-3 py-1 text-sm font-bold text-[#0f766e]">x{item.quantity}</span>
+                </div>
+              ))
             )}
+          </div>
 
-            <div className="grid gap-3">
-              <Field label="Họ tên khách">
-                <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Nguyễn Văn A" required />
-              </Field>
-              <Field label="Số điện thoại">
-                <Input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="09xx xxx xxx" required />
-              </Field>
-              <Field label="Email">
-                <Input type="email" value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} placeholder="name@email.com" />
-              </Field>
-              {channel === 'Pickup' && (
-                <Field label="Giờ lấy món">
-                  <Input type="time" value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} />
-                </Field>
-              )}
-              {channel === 'Delivery' && (
-                <Field label="Địa chỉ nhận hàng">
-                  <Input value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} placeholder="Số nhà, đường, phường/xã" required />
-                </Field>
-              )}
-              <Field label="Thanh toán">
-                <Select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}>
-                  <option value="Banking">Chuyển khoản</option>
-                  <option value="Wallet">Ví điện tử</option>
-                  <option value="Card">Thẻ</option>
-                  <option value="Cash">Tiền mặt</option>
-                </Select>
-              </Field>
+          <div className="mt-5 rounded-xl bg-[#f8fbfa] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-[#4f5b58]">Tạm tính</span>
+              <span className="font-display text-2xl font-bold">{formatCurrency(total)}</span>
             </div>
-
-            <div className="rounded-xl bg-[#f8fbfa] p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-[#4f5b58]">Tổng thanh toán</span>
-                <span className="font-display text-2xl font-bold">{formatCurrency(total)}</span>
-              </div>
-              <div className="mt-3 flex items-center justify-between text-sm text-[#0f766e]">
-                <span className="inline-flex items-center gap-2 font-semibold">
-                  <Gift className="h-4 w-4" />
-                  Điểm dự kiến
-                </span>
-                <span className="font-bold">+{pendingPoints}</span>
-              </div>
+            <div className="mt-3 flex items-center justify-between text-sm text-[#0f766e]">
+              <span className="inline-flex items-center gap-2 font-semibold">
+                <Gift className="h-4 w-4" />
+                Điểm dự kiến
+              </span>
+              <span className="font-bold">+{pendingPoints}</span>
             </div>
+          </div>
 
-            {formError && <div className="rounded-xl bg-[#ffdad6] p-3 text-sm font-semibold text-[#93000a]">{formError}</div>}
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={!cart.length || !customerName.trim() || !customerPhone.trim() || (channel === 'Delivery' && !deliveryAddress.trim())}
-            >
-              Gửi đơn hàng
-            </Button>
-
-            {confirmedOrder && (
-              <div className="rounded-xl border border-[#b7cdb8] bg-[#dfeadc] p-3 text-sm font-semibold text-[#26442f]">
-                Đã tạo đơn {confirmedOrder}. Điểm thưởng đã được ghi vào hồ sơ khách.
-              </div>
-            )}
-          </form>
+          <Button className="mt-5 w-full" onClick={onCheckout}>
+            <ShoppingBag className="h-4 w-4" />
+            Đến trang thanh toán
+          </Button>
         </Card>
       </section>
     </div>
