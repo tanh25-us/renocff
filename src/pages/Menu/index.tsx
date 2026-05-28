@@ -116,13 +116,7 @@ export default function MenuPage() {
     return Array.isArray(recipes) && recipes.length > 0 ? recipes : HARDCODED_MOCK_RECIPES;
   }, [recipes]);
 
-  const safeBeans = useMemo(() => {
-    return Array.isArray(beans) && beans.length > 0 ? beans : [
-      { id: 'b1', name: 'Arabica Cầu Đất', region: 'Lâm Đồng', country: 'Việt Nam', process: 'Washed', quantityKg: 45, status: 'Optimal', notes: 'Sử dụng cho espresso', lastRoastDate: 'Hôm qua' },
-      { id: 'b2', name: 'Robusta Honey', region: 'Đắk Lắk', country: 'Việt Nam', process: 'Honey', quantityKg: 12, status: 'Critical', notes: 'Sắp hết, cần rang thêm', lastRoastDate: '3 ngày trước' },
-      { id: 'b3', name: 'Colombia Supremo', region: 'Huila', country: 'Colombia', process: 'Washed', quantityKg: 280, status: 'Surplus', notes: 'Dùng cho Cold Brew', lastRoastDate: 'Tuần trước' }
-    ];
-  }, [beans]);
+
 
   // Merge items dynamic with the store's recipes
   const mergedProducts = useMemo(() => {
@@ -403,59 +397,6 @@ export default function MenuPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] items-start pb-8">
-        <Card>
-          <CardHeader>
-            <h2 className="font-display text-xl font-bold">Kho hạt đặc sản</h2>
-            <p className="mt-1 text-sm text-[#4f4540]">Theo dõi các lô hạt dùng cho pha chế.</p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {safeBeans.map((bean) => (
-              <div key={bean.id} className="rounded-xl border border-[#d3c3bd] bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-display text-lg font-bold text-[#25160e]">{bean.name}</p>
-                    <p className="mt-1 text-sm text-[#4f4540]">{bean.region}, {bean.country} · {bean.process}</p>
-                  </div>
-                  <Badge tone={bean.status === 'Critical' ? 'danger' : bean.status === 'Surplus' ? 'primary' : 'success'}>
-                    {bean.quantityKg}kg
-                  </Badge>
-                </div>
-                <p className="mt-3 text-xs leading-5 text-[#4f4540]">{bean.notes}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <div>
-              <h2 className="font-display text-xl font-bold">Nhật ký rang nhanh</h2>
-              <p className="mt-1 text-sm text-[#4f4540]">Cập nhật tồn kho tức thì sau mỗi mẻ rang.</p>
-            </div>
-            <Flame className="h-5 w-5 text-[#25160e]" />
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            {safeBeans.map((bean) => (
-              <div key={bean.id} className="reno-panel p-4 rounded-xl border border-[#d3c3bd] bg-white">
-                <div className="flex items-center gap-3">
-                  <Coffee className="h-5 w-5 text-[#6d5b4c]" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-[#25160e]">{bean.name}</p>
-                    <p className="mt-1 text-[10px] text-[#81756f]">Rang gần nhất {bean.lastRoastDate}</p>
-                  </div>
-                </div>
-                <PermissionGuard permission="canManageInventory" displayMode="hide">
-                  <div className="mt-4 flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => updateBeanQty(bean.id, -5)}>-5kg</Button>
-                    <Button size="sm" onClick={() => updateBeanQty(bean.id, 12)}>+12kg rang</Button>
-                  </div>
-                </PermissionGuard>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </section>
     </div>
   );
 }
