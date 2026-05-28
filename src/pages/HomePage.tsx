@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Award, MapPin, Plus, Star, X } from 'lucide-react';
 import { useStore } from '../store';
@@ -6,6 +6,10 @@ import { useCartStore } from '../store/useCartStore';
 import { formatCurrency } from '../lib/utils';
 import { PRODUCTS, PRODUCT_CATEGORIES } from '../lib/products';
 import type { ProductCategory } from '../lib/products';
+import BrandStory from '../components/common/BrandStory';
+import SiteFooter from '../components/common/SiteFooter';
+
+const MARQUEE_TEXT = "Reno Coffee · Nghệ thuật cà phê thủ công · Hạt rang tươi mỗi ngày · Giao tận nơi trong 30 phút · Reno Club tích điểm mỗi đơn ·";
 
 // ── Login Modal ────────────────────────────────────────────────────────────
 function LoginModal({ onClose }: { onClose: () => void }) {
@@ -88,6 +92,12 @@ export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState<ProductCategory>('all');
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [marqueePosition, setMarqueePosition] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setMarqueePosition((prev) => prev - 1), 50);
+    return () => clearInterval(interval);
+  }, []);
 
   const availabilityMap = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -111,7 +121,15 @@ export default function HomePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 space-y-12">
-      <section className="overflow-hidden rounded-2xl bg-[#25160e] text-white">
+      {/* ── HEADER MARQUEE ── */}
+      <div className="relative h-10 bg-[#25160e] flex items-center overflow-hidden rounded-xl">
+        <div className="absolute whitespace-nowrap text-xs font-semibold text-[#f4dbc9]"
+          style={{ transform: `translateX(${marqueePosition}px)` }}>
+          {MARQUEE_TEXT.repeat(3)}
+        </div>
+      </div>
+
+      <section className="overflow-hidden rounded-2xl bg-[#25160e] text-white shadow-[0px_8px_40px_rgba(37,22,14,0.25)]">
         <div className="grid md:grid-cols-[1fr_0.9fr]">
           <div className="flex flex-col justify-center p-8 md:p-12">
             <p className="label-caps text-[#dec1b3]">Reno Coffee · Hà Nội</p>
@@ -139,7 +157,7 @@ export default function HomePage() {
           </div>
           <div className="hidden md:block">
             <img src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=90"
-              alt="Reno Coffee" className="h-full w-full object-cover" style={{ minHeight: 280 }} />
+              alt="Reno Coffee" className="h-full w-full object-cover transition duration-700 hover:scale-[1.05]" style={{ minHeight: 280 }} />
           </div>
         </div>
       </section>
@@ -167,7 +185,7 @@ export default function HomePage() {
         <p className="label-caps text-[#6d5b4c]">Chi nhánh Hà Nội</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           {outlets.map((outlet) => (
-            <div key={outlet.id} className="rounded-xl border border-[#d3c3bd] bg-white p-4 transition hover:border-[#6d5b4c]">
+            <div key={outlet.id} className="rounded-xl border border-[#d3c3bd] bg-white p-4 transition hover:border-[#6d5b4c] hover:shadow-md">
               <p className="text-sm font-bold">{outlet.name}</p>
               <p className="mt-1 flex items-start gap-1.5 text-xs text-[#4f4540]">
                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />{outlet.address}
@@ -180,6 +198,8 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      <BrandStory />
 
       <section id="menu">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -198,7 +218,7 @@ export default function HomePage() {
         </div>
         <div className="mt-5 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
           {filtered.map((product) => (
-            <ProductCard key={product.id} product={product}
+            <ProductCard product={product}
               onAdd={handleAdd}
               added={addedIds.has(product.id)}
               available={availabilityMap[product.name] !== false} />
@@ -207,6 +227,8 @@ export default function HomePage() {
       </section>
 
       {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} />}
+      
+      <SiteFooter />
     </div>
   );
 }

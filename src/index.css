@@ -115,3 +115,21 @@ img {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
+}
+
+@keyframes slide-down {
+  0% { max-height: 0; opacity: 0; }
+  100% { max-height: 200px; opacity: 1; }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.3s ease-out;
+}
