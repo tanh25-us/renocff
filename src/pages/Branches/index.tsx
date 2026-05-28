@@ -103,7 +103,8 @@ export default function Branches() {
                     <Star className="h-4 w-4 fill-[#f4dbc9]" />
                     {outlet.rating.toFixed(1)}
                   </div>
-                  <h2 className="font-display mt-2 text-2xl font-bold">{outlet.name}</h2>
+                  <h2 className="font-display mt-2 text-2xl font-bold">Reno Coffee</h2>
+                  <p className="text-xs text-[#f4dbc9] font-semibold mt-1 truncate">Reno Coffee - {outlet.address}</p>
                 </div>
                 {active && (
                   <div className="absolute right-4 top-4">

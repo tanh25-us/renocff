@@ -80,93 +80,85 @@ function PosMenu({ onAdd }: { onAdd: (item: Omit<PosCartItem, 'quantity'>) => vo
   );
 }
 
-// ── Order Queue ────────────────────────────────────────────────────────────
+// ── Order Queue (Kanban) ───────────────────────────────────────────────────
 function OrderQueue() {
   const { orders, activeOutletId, updateOrderStatus } = useStore();
-  const [filter, setFilter] = useState<'All' | OrderStatus>('All');
   const [query, setQuery] = useState('');
-
-  const statusFilters: Array<'All' | OrderStatus> = ['All', 'Pending', 'Brewing', 'Ready', 'Completed'];
 
   const visible = orders.filter((o) => {
     const sameOutlet = o.outletId === activeOutletId;
-    const sameStatus = filter === 'All' || o.status === filter;
     const sameQuery = !query || [o.id, o.customerName, o.customerPhone || ''].join(' ').toLowerCase().includes(query.toLowerCase());
-    return sameOutlet && sameStatus && sameQuery;
+    return sameOutlet && sameQuery;
   });
 
-  const pendingCount = orders.filter((o) => o.outletId === activeOutletId && o.status === 'Pending').length;
+  const columns: { title: string; statuses: OrderStatus[]; nextStatus?: OrderStatus }[] = [
+    { title: 'ĐANG CHỜ', statuses: ['Pending'], nextStatus: 'Brewing' },
+    { title: 'ĐANG PHA CHẾ', statuses: ['Brewing'], nextStatus: 'Completed' },
+    { title: 'HOÀN THÀNH', statuses: ['Ready', 'Completed'] },
+  ];
 
   return (
-    <Card>
-      <CardHeader className="space-y-4">
+    <Card className="flex flex-col h-full">
+      <CardHeader className="space-y-4 shrink-0">
         <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
           <div>
-            <h2 className="font-display text-xl font-bold">
-              Hàng chờ đơn hàng
-              {pendingCount > 0 && (
-                <span className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#ba1a1a] text-xs font-bold text-white">{pendingCount}</span>
-              )}
-            </h2>
-            <p className="mt-1 text-sm text-[#4f4540]">Cập nhật trạng thái từ mới nhận đến hoàn tất.</p>
+            <h2 className="font-display text-xl font-bold">Hàng chờ đơn hàng</h2>
+            <p className="mt-1 text-sm text-[#4f4540]">Cập nhật trạng thái theo quy trình (Kanban).</p>
           </div>
           <div className="relative w-full lg:w-72">
             <Search className="absolute left-3 top-3.5 h-4 w-4 text-[#81756f]" />
             <Input className="pl-10" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã đơn, tên, SĐT" />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {statusFilters.map((s) => (
-            <button key={s} onClick={() => setFilter(s)}
-              className={`min-h-9 rounded-full border px-4 text-sm font-semibold transition ${filter === s ? 'border-[#25160e] bg-[#25160e] text-white' : 'border-[#d3c3bd] bg-white text-[#4f4540] hover:bg-[#f6f3f2]'}`}>
-              {s === 'All' ? 'Tất cả' : STATUS_LABEL[s]}
-            </button>
-          ))}
-        </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {visible.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[#d3c3bd] p-8 text-center text-sm text-[#81756f]">Không có đơn phù hợp.</div>
-        ) : (
-          visible.map((order) => {
-            const nextAction = STATUS_NEXT[order.status];
-            const isOnline = order.source === 'Website' || order.source === 'MobileApp';
+      <CardContent className="flex-1 p-5">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          {columns.map(col => {
+            const colOrders = visible.filter(o => col.statuses.includes(o.status));
             return (
-              <div key={order.id} className={`rounded-xl border bg-white p-4 ${order.status === 'Pending' && isOnline ? 'border-[#ba1a1a]/40 bg-[#fff8f7]' : 'border-[#d3c3bd]'}`}>
-                <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-display text-base font-bold">{order.id}</p>
-                      <StatusBadge status={order.status} />
-                      <Badge tone={isOnline ? 'primary' : 'neutral'}>
-                        {isOnline ? <><Wifi className="mr-1 inline h-3 w-3" />Online</> : <><Store className="mr-1 inline h-3 w-3" />Tại quán</>}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-sm font-semibold">{order.customerName}
-                      {order.customerPhone && <span className="ml-2 text-xs font-normal text-[#81756f]">{order.customerPhone}</span>}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-[#4f4540]">
-                      {order.items.map((i) => `${i.name} x${i.quantity}`).join(' · ')}
-                    </p>
-                    <p className="mt-1 flex items-center gap-1 text-xs text-[#81756f]">
-                      <Clock className="h-3.5 w-3.5" />{order.orderTime}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 md:flex-col md:items-end">
-                    <p className="font-display text-lg font-bold">{formatCurrency(order.total)}</p>
-                    {nextAction && (
-                      <PermissionGuard permission="canManageOrders" displayMode="overlay">
-                        <Button size="sm" onClick={() => updateOrderStatus(order.id, nextAction.next)} className="whitespace-nowrap">
-                          {nextAction.label}
-                        </Button>
-                      </PermissionGuard>
-                    )}
-                  </div>
+              <div key={col.title} className="flex flex-col rounded-2xl bg-[#f6f3f2] border border-[#d3c3bd] p-4 h-[600px]">
+                <div className="mb-4 flex items-center justify-between px-1">
+                  <h3 className="font-display text-base font-bold text-[#25160e]">{col.title}</h3>
+                  <Badge tone="neutral">{colOrders.length}</Badge>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                  {colOrders.length === 0 ? (
+                    <div className="text-center text-xs text-[#81756f] mt-4">Không có đơn hàng</div>
+                  ) : colOrders.map(order => {
+                    const isOnline = order.source === 'Website' || order.source === 'MobileApp';
+                    return (
+                      <div key={order.id} className="rounded-xl border border-[#d3c3bd] bg-white p-4 shadow-sm transition hover:border-[#6d5b4c]">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-display text-base font-bold text-[#25160e]">{order.id}</p>
+                          <Badge tone={isOnline ? 'primary' : 'neutral'}>
+                            {isOnline ? <><Wifi className="mr-1 inline h-3 w-3" />Online</> : <><Store className="mr-1 inline h-3 w-3" />Tại quán</>}
+                          </Badge>
+                        </div>
+                        <p className="text-sm font-bold text-[#1b1c1c]">{order.customerName}</p>
+                        {order.customerPhone && <p className="text-xs text-[#81756f]">{order.customerPhone}</p>}
+                        <div className="my-3 border-t border-dashed border-[#d3c3bd] pt-3">
+                          <p className="text-xs leading-5 text-[#4f4540]">
+                            {order.items.map(i => `${i.name} x${i.quantity}`).join(' · ')}
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="font-bold text-[#25160e]">{formatCurrency(order.total)}</span>
+                          {col.nextStatus && (
+                            <PermissionGuard permission="canManageOrders" displayMode="overlay">
+                              <Button size="sm" onClick={() => updateOrderStatus(order.id, col.nextStatus!)} className="h-8 px-3 text-xs">
+                                Chuyển →
+                              </Button>
+                            </PermissionGuard>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
-          })
-        )}
+          })}
+        </div>
       </CardContent>
     </Card>
   );

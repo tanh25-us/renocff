@@ -58,16 +58,14 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2">
         <MetricCard
-          label="Doanh thu hôm nay"
+          label="Tổng doanh thu hôm nay"
           value={formatCurrency(stats.dailyRevenue)}
           helper={<span className="inline-flex items-center gap-1 text-[#26442f]"><ArrowUpRight className="h-3.5 w-3.5" />+12.5% so với hôm qua</span>}
           icon={<TrendingUp className="h-5 w-5" />}
         />
-        <MetricCard label="Doanh thu tuần" value={formatCurrency(stats.weeklyRevenue)} helper="Ước tính từ POS 7 ngày" icon={<ReceiptText className="h-5 w-5" />} />
-        <MetricCard label="Số lượng đơn" value={stats.orderCount} helper={`${stats.activeOrders} đơn đang xử lý · ${stats.pickupOrders} pickup`} icon={<ShoppingBag className="h-5 w-5" />} />
-        <MetricCard label="Giá trị TB/đơn" value={formatCurrency(stats.avgTicket)} helper={`${customers.length} khách Reno Club`} icon={<Users className="h-5 w-5" />} />
+        <MetricCard label="Tổng số đơn hàng" value={stats.orderCount} helper={`${stats.activeOrders} đơn đang xử lý`} icon={<ShoppingBag className="h-5 w-5" />} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1fr_380px]">
@@ -103,21 +101,6 @@ export default function Dashboard() {
                   </g>
                 ))}
               </svg>
-            </div>
-
-            <div className="grid gap-3 border-t border-[#d3c3bd]/70 pt-5 sm:grid-cols-3">
-              <div>
-                <p className="label-caps text-[#6d5b4c]">Đỉnh tuần</p>
-                <p className="mt-1 font-display text-xl font-bold">{formatCurrency(maxValue)}</p>
-              </div>
-              <div>
-                <p className="label-caps text-[#6d5b4c]">Hoàn tất</p>
-                <p className="mt-1 font-display text-xl font-bold">{stats.completedOrders}/{orders.length}</p>
-              </div>
-              <div>
-                <p className="label-caps text-[#6d5b4c]">Pickup</p>
-                <p className="mt-1 font-display text-xl font-bold">{percent(stats.pickupOrders, orders.length)}%</p>
-              </div>
             </div>
           </CardContent>
         </Card>
@@ -156,8 +139,8 @@ export default function Dashboard() {
               return (
                 <div key={outlet.id} className="grid gap-3 md:grid-cols-[180px_1fr_120px] md:items-center">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold">{outlet.name}</p>
-                    <p className="mt-1 text-xs text-[#4f4540]">{outlet.activeOrdersCount} đơn mở</p>
+                    <p className="text-sm font-bold">Reno Coffee</p>
+                    <p className="mt-1 text-xs text-[#4f4540] truncate">Reno Coffee - {outlet.address}</p>
                   </div>
                   <div>
                     <div className="mb-2 flex justify-between text-xs font-semibold text-[#4f4540]">

@@ -16,11 +16,11 @@ const APP_ROUTES = [
   { id: 'menu',      label: 'Thực đơn',   icon: BarChart3 },
   { id: 'customers', label: 'Khách hàng', icon: Users },
   { id: 'branches',  label: 'Chi nhánh',  icon: Building2 },
+  { id: 'staff',     label: 'Nhân viên',  icon: Users },
 ] as const;
 
 const permissionText: Record<string, string> = {
   canManageRecipes: 'Menu',
-  canManageInventory: 'Kho',
   canManageShifts: 'Ca',
   canManageOutlets: 'Chi nhánh',
   canManageOrders: 'Đơn',
@@ -29,13 +29,9 @@ const permissionText: Record<string, string> = {
 };
 
 export default function Sidebar({ currentTab, setTab, isOpen, onClose }: SidebarProps) {
-  const { outlets, activeOutletId, currentRole, logout } = useStore();
+  const { outlets, activeOutletId, currentRole } = useStore();
   const activeOutlet = outlets.find((outlet) => outlet.id === activeOutletId) || outlets[0];
   const roleConfig = ROLE_PERMISSIONS[currentRole];
-  const allowed = Object.entries(roleConfig.permissions)
-    .filter(([, value]) => value)
-    .map(([key]) => permissionText[key])
-    .join(', ');
 
   const handleClick = (tab: AppRouteId) => { setTab(tab); onClose(); };
 
@@ -56,17 +52,18 @@ export default function Sidebar({ currentTab, setTab, isOpen, onClose }: Sidebar
         <div className="space-y-3 px-4 py-5">
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="label-caps text-[#aa9084]">Chi nhánh đang trực</p>
-            <p className="mt-2 truncate text-sm font-semibold">{activeOutlet?.name}</p>
-            <p className="mt-1 text-xs text-[#dec1b3]/75">{activeOutlet?.hours}</p>
+            <p className="mt-2 text-sm font-bold">Reno Coffee</p>
+            <p className="mt-1 text-xs text-[#dec1b3]/75 leading-relaxed">
+              Reno Coffee - {activeOutlet?.address}
+            </p>
           </div>
           <div className="rounded-xl border border-[#f4dbc9]/20 bg-[#f4dbc9]/10 p-3">
             <p className="label-caps text-[#dec1b3]">Quyền hiện tại</p>
             <p className="mt-2 text-sm font-bold">{roleConfig.label}</p>
-            <p className="mt-1 text-xs leading-5 text-[#dec1b3]/80">Được phép: {allowed}</p>
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3">
+        <nav className="flex-grow space-y-1 px-3">
           {APP_ROUTES.map((route) => {
             const Icon = route.icon;
             const active = currentTab === route.id;
@@ -79,12 +76,6 @@ export default function Sidebar({ currentTab, setTab, isOpen, onClose }: Sidebar
             );
           })}
         </nav>
-
-        <div className="border-t border-white/10 p-4">
-          <Button variant="secondary" className="w-full border-white/20 text-white hover:bg-white/10" onClick={logout}>
-            Khóa phiên
-          </Button>
-        </div>
       </aside>
     </>
   );

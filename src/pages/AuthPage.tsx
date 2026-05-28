@@ -2,11 +2,10 @@ import { useCallback, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Coffee, Eye, EyeOff } from 'lucide-react';
-import { useStore, ROLE_PERMISSIONS } from '../store';
+import { useStore } from '../store';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-type CustomerView = 'login' | 'register' | 'forgot';
-type Tab = 'customer' | 'staff';
+type AuthView = 'login' | 'register' | 'forgot';
 
 interface RegisterForm {
   name: string;
@@ -66,11 +65,11 @@ function TextInput({
   );
 }
 
-// ── Customer Login View ────────────────────────────────────────────────────
-function CustomerLoginView({ onSwitch }: { onSwitch: (v: CustomerView) => void }) {
-  const { loginCustomer } = useStore();
+// ── Unified Login View ─────────────────────────────────────────────────────
+function LoginView({ onSwitch }: { onSwitch: (v: AuthView) => void }) {
+  const { loginCustomer, login, baristas, setActiveOutlet } = useStore();
   const navigate = useNavigate();
-  const [phone, setPhone] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
@@ -78,16 +77,39 @@ function CustomerLoginView({ onSwitch }: { onSwitch: (v: CustomerView) => void }
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!VN_PHONE.test(phone.replace(/\s/g, ''))) { setError('Số điện thoại không hợp lệ.'); return; }
-    const result = loginCustomer({ phone });
-    if (!result) { setError('Số điện thoại chưa có tài khoản. Vui lòng đăng ký.'); return; }
+    
+    // Check if staff
+    const barista = baristas.find((b) => b.id === identifier);
+    if (barista) {
+      if (password !== '1234') {
+        setError('Mật khẩu không đúng cho tài khoản nhân viên (Mã mẫu: 1234).');
+        return;
+      }
+      login(barista.id, barista.role);
+      if (barista.activeOutletId) {
+        setActiveOutlet(barista.activeOutletId);
+      }
+      navigate('/admin/dashboard');
+      return;
+    }
+
+    // Otherwise, treat as customer phone
+    if (!VN_PHONE.test(identifier.replace(/\s/g, ''))) { 
+      setError('Số điện thoại không hợp lệ hoặc sai ID nhân viên.'); 
+      return; 
+    }
+    const result = loginCustomer({ phone: identifier });
+    if (!result) { 
+      setError('Số điện thoại chưa có tài khoản. Vui lòng đăng ký.'); 
+      return; 
+    }
     navigate('/');
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <TextInput label="Số điện thoại" value={phone} onChange={setPhone} placeholder="0912 345 678" error={error && !phone ? error : undefined} />
-      <TextInput label="Mật khẩu" type={showPw ? 'text' : 'password'} value={password} onChange={setPassword}
+      <TextInput label="SĐT Khách hàng / ID Nhân viên" value={identifier} onChange={setIdentifier} placeholder="0912 345 678 hoặc bar-1" error={error && !identifier ? error : undefined} />
+      <TextInput label="Mật khẩu / Mã ca" type={showPw ? 'text' : 'password'} value={password} onChange={setPassword}
         placeholder="••••••" showToggle onToggle={() => setShowPw((v) => !v)} />
       {error && <p className="rounded-lg bg-[#ffdad6] px-3 py-2 text-sm font-semibold text-[#93000a]">{error}</p>}
       <button type="submit" className="w-full rounded-xl bg-[#25160e] py-3 text-sm font-bold text-white hover:bg-[#3c2a21]">
@@ -104,7 +126,7 @@ function CustomerLoginView({ onSwitch }: { onSwitch: (v: CustomerView) => void }
 }
 
 // ── Customer Register View ─────────────────────────────────────────────────
-function CustomerRegisterView({ onSwitch }: { onSwitch: (v: CustomerView) => void }) {
+function RegisterView({ onSwitch }: { onSwitch: (v: AuthView) => void }) {
   const { loginCustomer } = useStore();
   const navigate = useNavigate();
   const [form, setForm] = useState<RegisterForm>({ name: '', phone: '', email: '', password: '', confirmPassword: '' });
@@ -157,7 +179,7 @@ function CustomerRegisterView({ onSwitch }: { onSwitch: (v: CustomerView) => voi
 }
 
 // ── Forgot Password View ───────────────────────────────────────────────────
-function ForgotView({ onSwitch }: { onSwitch: (v: CustomerView) => void }) {
+function ForgotView({ onSwitch }: { onSwitch: (v: AuthView) => void }) {
   const [phone, setPhone] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
@@ -191,59 +213,16 @@ function ForgotView({ onSwitch }: { onSwitch: (v: CustomerView) => void }) {
   );
 }
 
-// ── Staff Login View ───────────────────────────────────────────────────────
-function StaffLoginView() {
-  const { baristas, login } = useStore();
-  const navigate = useNavigate();
-  const [selectedId, setSelectedId] = useState(baristas[0]?.id || '');
-  const [password, setPassword] = useState('1234');
-  const [showPw, setShowPw] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const barista = baristas.find((b) => b.id === selectedId);
-    if (!barista) return;
-    if (password !== '1234') { setError('Mã ca không đúng. Mã mẫu: 1234'); return; }
-    login(barista.id, barista.role);
-    navigate('/admin/dashboard');
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        {baristas.map((b) => (
-          <button key={b.id} type="button" onClick={() => setSelectedId(b.id)}
-            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition ${selectedId === b.id ? 'border-[#25160e] bg-[#f4dbc9]' : 'border-[#d3c3bd] bg-white hover:bg-[#f6f3f2]'}`}>
-            <p className="text-sm font-bold">{b.name}</p>
-            <p className="text-xs text-[#4f4540]">{ROLE_PERMISSIONS[b.role].label}</p>
-          </button>
-        ))}
-      </div>
-      <TextInput label="Mã ca" type={showPw ? 'text' : 'password'} value={password} onChange={setPassword}
-        placeholder="1234" showToggle onToggle={() => setShowPw((v) => !v)} />
-      {error && <p className="rounded-lg bg-[#ffdad6] px-3 py-2 text-sm font-semibold text-[#93000a]">{error}</p>}
-      <button type="submit" className="w-full rounded-xl bg-[#25160e] py-3 text-sm font-bold text-white hover:bg-[#3c2a21]">
-        Vào hệ thống quản trị
-      </button>
-      <p className="rounded-xl bg-[#f6f3f2] px-4 py-3 text-xs text-[#6d5b4c]">
-        Tài khoản nội bộ do Admin cấp. Liên hệ quản lý nếu quên mã ca.
-      </p>
-    </form>
-  );
-}
-
 // ── Main AuthPage ──────────────────────────────────────────────────────────
-const VIEW_TITLES: Record<CustomerView, { title: string; sub: string }> = {
-  login:    { title: 'Chào mừng trở lại',   sub: 'Đăng nhập để đặt hàng và tích điểm Reno Club.' },
+const VIEW_TITLES: Record<AuthView, { title: string; sub: string }> = {
+  login:    { title: 'Chào mừng trở lại',   sub: 'Đăng nhập vào hệ thống Reno Coffee.' },
   register: { title: 'Tạo tài khoản',        sub: 'Đăng ký miễn phí, tích điểm ngay từ đơn đầu tiên.' },
   forgot:   { title: 'Quên mật khẩu',        sub: 'Lấy lại quyền truy cập tài khoản của bạn.' },
 };
 
 export default function AuthPage() {
-  const [tab, setTab] = useState<Tab>('customer');
-  const [view, setView] = useState<CustomerView>('login');
-  const { title, sub } = tab === 'staff' ? { title: 'Đăng nhập nội bộ', sub: 'Dành cho nhân viên và quản lý Reno Coffee.' } : VIEW_TITLES[view];
+  const [view, setView] = useState<AuthView>('login');
+  const { title, sub } = VIEW_TITLES[view];
 
   return (
     <div className="grid min-h-screen place-items-center bg-[#25160e] p-4">
@@ -259,25 +238,9 @@ export default function AuthPage() {
         </div>
 
         <div className="p-6">
-          {/* Tab switcher */}
-          <div className="mb-6 grid grid-cols-2 rounded-xl border border-[#d3c3bd] bg-[#f6f3f2] p-1">
-            {(['customer', 'staff'] as Tab[]).map((t) => (
-              <button key={t} onClick={() => { setTab(t); setView('login'); }}
-                className={`rounded-lg py-2 text-sm font-semibold transition ${tab === t ? 'bg-white text-[#25160e] shadow-sm' : 'text-[#4f4540]'}`}>
-                {t === 'customer' ? 'Khách hàng' : 'Nhân viên'}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'customer' ? (
-            <>
-              {view === 'login'    && <CustomerLoginView onSwitch={setView} />}
-              {view === 'register' && <CustomerRegisterView onSwitch={setView} />}
-              {view === 'forgot'   && <ForgotView onSwitch={setView} />}
-            </>
-          ) : (
-            <StaffLoginView />
-          )}
+          {view === 'login'    && <LoginView onSwitch={setView} />}
+          {view === 'register' && <RegisterView onSwitch={setView} />}
+          {view === 'forgot'   && <ForgotView onSwitch={setView} />}
 
           <div className="mt-5 text-center">
             <Link to="/" className="text-xs text-[#81756f] hover:text-[#25160e]">← Về trang chủ</Link>

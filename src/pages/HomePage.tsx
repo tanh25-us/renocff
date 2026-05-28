@@ -87,7 +87,7 @@ function ProductCard({ product, onAdd, added, available }: {
 
 // ── HomePage ───────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const { outlets, currentCustomer, recipes } = useStore();
+  const { outlets, currentCustomer, recipes, activeOutletId } = useStore();
   const { addToCart } = useCartStore();
   const [activeCategory, setActiveCategory] = useState<ProductCategory>('all');
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
@@ -101,23 +101,32 @@ export default function HomePage() {
 
   const availabilityMap = useMemo(() => {
     const map: Record<string, boolean> = {};
-    recipes.forEach((r) => { map[r.name] = r.available; });
+    recipes.forEach((r) => { 
+      let available = r.available;
+      if (r.availableOutlets && r.availableOutlets.length > 0) {
+        if (!r.availableOutlets.includes(activeOutletId)) {
+          available = false;
+        }
+      }
+      map[r.name] = available; 
+    });
     return map;
-  }, [recipes]);
+  }, [recipes, activeOutletId]);
 
-  const filtered = useMemo(() =>
-    activeCategory === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === activeCategory),
-    [activeCategory],
-  );
+  const filtered = useMemo(() => {
+    const list = activeCategory === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === activeCategory);
+    return list.filter((p) => availabilityMap[p.name] !== false);
+  }, [activeCategory, availabilityMap]);
 
   const handleAdd = useCallback((id: string) => {
     if (!currentCustomer) { setShowLoginModal(true); return; }
     const product = PRODUCTS.find((p) => p.id === id);
     if (!product) return;
+    if (availabilityMap[product.name] === false) return;
     addToCart({ id: product.id, name: product.name, price: product.price, image: product.image });
     setAddedIds((prev) => new Set(prev).add(id));
     setTimeout(() => setAddedIds((prev) => { const s = new Set(prev); s.delete(id); return s; }), 900);
-  }, [currentCustomer, addToCart]);
+  }, [currentCustomer, addToCart, availabilityMap]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 space-y-12">
@@ -218,7 +227,7 @@ export default function HomePage() {
         </div>
         <div className="mt-5 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
           {filtered.map((product) => (
-            <ProductCard product={product}
+            <ProductCard key={product.id} product={product}
               onAdd={handleAdd}
               added={addedIds.has(product.id)}
               available={availabilityMap[product.name] !== false} />

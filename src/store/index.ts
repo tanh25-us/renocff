@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import {
   Barista,
-  BeanStock,
   CartItem,
   Customer,
   LoyaltyReward,
@@ -24,7 +23,6 @@ export const ROLE_PERMISSIONS: Record<Barista['role'], RolePermission> = {
     description: 'Toàn quyền vận hành, theo dõi doanh thu, quản lý đơn hàng, thực đơn, khách hàng và chi nhánh.',
     permissions: {
       canManageRecipes: true,
-      canManageInventory: true,
       canManageShifts: true,
       canManageOutlets: true,
       canManageOrders: true,
@@ -38,7 +36,6 @@ export const ROLE_PERMISSIONS: Record<Barista['role'], RolePermission> = {
     description: 'Điều phối quầy bar, cập nhật thực đơn, xử lý đơn hàng và xem các chỉ số ca trực.',
     permissions: {
       canManageRecipes: true,
-      canManageInventory: true,
       canManageShifts: true,
       canManageOutlets: false,
       canManageOrders: true,
@@ -52,7 +49,6 @@ export const ROLE_PERMISSIONS: Record<Barista['role'], RolePermission> = {
     description: 'Tập trung vận hành đơn hàng, công thức pha chế và chăm sóc khách quen.',
     permissions: {
       canManageRecipes: true,
-      canManageInventory: false,
       canManageShifts: false,
       canManageOutlets: false,
       canManageOrders: true,
@@ -63,10 +59,9 @@ export const ROLE_PERMISSIONS: Record<Barista['role'], RolePermission> = {
   Roaster: {
     role: 'Roaster',
     label: 'Thợ rang cà phê',
-    description: 'Quản lý kho hạt, lô rang và trạng thái nguyên liệu phục vụ thực đơn.',
+    description: 'Quản lý lô rang và trạng thái nguyên liệu phục vụ thực đơn.',
     permissions: {
       canManageRecipes: false,
-      canManageInventory: true,
       canManageShifts: false,
       canManageOutlets: false,
       canManageOrders: false,
@@ -80,7 +75,6 @@ export const ROLE_PERMISSIONS: Record<Barista['role'], RolePermission> = {
     description: 'Theo dõi đơn hàng và hỗ trợ thao tác cơ bản tại quầy.',
     permissions: {
       canManageRecipes: false,
-      canManageInventory: false,
       canManageShifts: false,
       canManageOutlets: false,
       canManageOrders: true,
@@ -96,7 +90,6 @@ interface RenoState {
   currentUser: Barista | null;
   outlets: Outlet[];
   recipes: Recipe[];
-  beans: BeanStock[];
   baristas: Barista[];
   shifts: Shift[];
   orders: Order[];
@@ -112,10 +105,9 @@ interface RenoState {
   addOutlet: (outlet: Outlet) => void;
   updateOutlet: (outlet: Outlet) => void;
   addRecipe: (recipe: Recipe) => void;
+  updateRecipe: (recipe: Recipe) => void;
   deleteRecipe: (id: string) => void;
   toggleRecipeAvailability: (id: string) => void;
-  addBeans: (bean: BeanStock) => void;
-  updateBeanQty: (id: string, qtyDelta: number) => void;
   addShift: (shift: Shift) => void;
   deleteShift: (id: string) => void;
   updateBaristaRole: (baristaId: string, role: Barista['role']) => void;
@@ -195,191 +187,304 @@ const INITIAL_OUTLETS: Outlet[] = [
 const INITIAL_RECIPES: Recipe[] = [
   {
     id: 'rec-1',
-    name: 'Cold Brew trái cây',
-    type: 'Cold Brew',
-    origin: 'Colombia Huila Anaerobic',
-    description: 'Ủ lạnh 18 giờ, hậu vị trái cây nhiệt đới và mật ong nhẹ.',
-    image: IMG.coldBrew,
-    price: 69000,
-    roast: 'Light',
-    grindSetting: 8.5,
-    extractionTime: 64800,
-    waterTemp: 4,
-    ratio: '1:10',
-    acidity: 4,
-    body: 3,
-    sweetness: 5,
-    bitterness: 1,
-    soldToday: 65,
-    available: true,
-    tags: ['Best seller', 'Ít ngọt', 'Pickup'],
-    instructions: ['Xay thô hạt Colombia.', 'Ủ lạnh trong bình kín 18 giờ.', 'Lọc hai lần, phục vụ cùng đá lớn và lát cam vàng.'],
-  },
-  {
-    id: 'rec-2',
-    name: 'Phin sữa đá truyền thống',
+    name: 'Phin đen đá',
     type: 'Coffee',
     origin: 'Robusta Honey Đà Lạt',
-    description: 'Gu Việt đậm, sữa đặc béo, cân bằng với đá viên tinh khiết.',
-    image: IMG.phin,
-    price: 59000,
-    roast: 'Medium',
-    grindSetting: 5.5,
-    extractionTime: 360,
-    waterTemp: 95,
-    ratio: '1:4',
-    acidity: 1,
-    body: 5,
-    sweetness: 4,
-    bitterness: 4,
-    soldToday: 98,
-    available: true,
-    tags: ['Signature', 'Dine-in'],
-    instructions: ['Cho 20g bột Robusta vào phin.', 'Ủ nở bằng 20ml nước 95 độ C.', 'Châm nước, chờ nhỏ giọt hoàn tất rồi khuấy với sữa đặc.'],
-  },
-  {
-    id: 'rec-3',
-    name: 'Latte hoa hồng',
-    type: 'Coffee',
-    origin: 'Ethiopia Yirgacheffe Washed',
-    description: 'Espresso rang sáng, sữa tươi microfoam và hương hoa hồng thanh.',
-    image: IMG.latte,
-    price: 72000,
-    roast: 'Light',
-    grindSetting: 2.2,
-    extractionTime: 28,
-    waterTemp: 93,
-    ratio: '1:2',
-    acidity: 4,
-    body: 3,
-    sweetness: 4,
-    bitterness: 2,
-    soldToday: 54,
-    available: true,
-    tags: ['Hot', 'Latte art'],
-    instructions: ['Chiết xuất 36g espresso trong 28 giây.', 'Đánh sữa ở 62 độ C.', 'Rót Rosetta, hoàn thiện với syrup hoa hồng.'],
-  },
-  {
-    id: 'rec-4',
-    name: 'Espresso tonic',
-    type: 'Coffee',
-    origin: 'Ethiopia Yirgacheffe Natural',
-    description: 'Espresso double shot trên nền tonic lạnh, vị chua sáng và bọt khí sảng khoái.',
-    image: IMG.bar,
-    price: 65000,
-    roast: 'Light',
-    grindSetting: 2.0,
-    extractionTime: 26,
-    waterTemp: 93,
-    ratio: '1:2',
-    acidity: 5,
-    body: 2,
-    sweetness: 3,
-    bitterness: 2,
-    soldToday: 38,
-    available: true,
-    tags: ['Sparkling', 'Iced'],
-    instructions: ['Chiết xuất 40g espresso double shot.', 'Đổ 120ml tonic lạnh vào ly đá.', 'Rót espresso nhẹ lên trên để giữ phân tầng.'],
-  },
-  {
-    id: 'rec-5',
-    name: 'Matcha espresso tonic',
-    type: 'Tea',
-    origin: 'Uji Matcha & Espresso Blend',
-    description: 'Matcha Nhật, tonic lạnh và espresso tạo lớp vị sáng, sạch.',
-    image: IMG.matcha,
-    price: 78000,
-    roast: 'Medium',
-    grindSetting: 2.4,
-    extractionTime: 26,
-    waterTemp: 92,
-    ratio: '1:2',
-    acidity: 3,
-    body: 3,
-    sweetness: 3,
-    bitterness: 2,
-    soldToday: 31,
-    available: true,
-    tags: ['New', 'Sparkling'],
-    instructions: ['Khuấy matcha với 40ml nước ấm.', 'Đổ tonic lạnh vào ly đá.', 'Float espresso lên trên để tạo phân tầng.'],
-  },
-  {
-    id: 'rec-6',
-    name: 'Cà phê muối kem',
-    type: 'Coffee',
-    origin: 'Robusta Honey Đà Lạt',
-    description: 'Cà phê đen đậm, lớp kem muối béo ngậy phủ trên, uống lạnh không khuấy.',
-    image: IMG.coldBrew,
-    price: 62000,
+    description: 'Robusta Đà Lạt rang mộc, đen đậm, uống lạnh với đá viên.',
+    image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=600&q=85',
+    price: 35000,
     roast: 'Medium',
     grindSetting: 5.0,
     extractionTime: 300,
     waterTemp: 95,
     ratio: '1:5',
-    acidity: 1,
-    body: 5,
-    sweetness: 4,
-    bitterness: 3,
-    soldToday: 47,
+    acidity: 1, body: 5, sweetness: 3, bitterness: 4,
+    soldToday: 42,
     available: true,
-    tags: ['Signature', 'Trending'],
-    instructions: ['Pha cà phê phin đặc, để nguội.', 'Đánh kem tươi với muối hồng và đường.', 'Rót cà phê vào ly đá, múc kem phủ lên trên.'],
-  },
-];
-
-const INITIAL_BEANS: BeanStock[] = [
-  {
-    id: 'bean-1',
-    name: 'Yirgacheffe Kochere Bloom',
-    country: 'Ethiopia',
-    region: 'Gedeo, Kochere',
-    process: 'Washed',
-    variety: 'Heirloom',
-    quantityKg: 125,
-    status: 'Optimal',
-    lastRoastDate: '2026-05-18',
-    elevation: '1,900 - 2,100m',
-    notes: 'Hương nhài, vỏ chanh và hậu vị trà đen sạch.',
+    tags: ['Signature', 'Đậm vị'],
+    instructions: ['Cho 20g bột Robusta vào phin.', 'Ủ nở trong 30 giây.', 'Châm nước sôi và chờ chiết xuất.'],
+    availableOutlets: ['out-1', 'out-2', 'out-3']
   },
   {
-    id: 'bean-2',
-    name: 'Gesha Golden Nectar',
-    country: 'Colombia',
-    region: 'Huila',
-    process: 'Anaerobic',
-    variety: 'Gesha',
-    quantityKg: 18,
-    status: 'Critical',
-    lastRoastDate: '2026-05-20',
-    elevation: '1,750m',
-    notes: 'Chanh leo, xoài chín, mật ong và gia vị nhẹ.',
+    id: 'rec-2',
+    name: 'Phin sữa đá',
+    type: 'Coffee',
+    origin: 'Robusta Honey Đà Lạt',
+    description: 'Phin Robusta đậm, sữa đặc béo ngậy, đá viên — cốc cà phê sáng quen thuộc.',
+    image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=600&q=85',
+    price: 45000,
+    roast: 'Medium',
+    grindSetting: 5.0,
+    extractionTime: 300,
+    waterTemp: 95,
+    ratio: '1:4',
+    acidity: 1, body: 5, sweetness: 4, bitterness: 4,
+    soldToday: 88,
+    available: true,
+    tags: ['Best Seller', 'Đậm vị'],
+    instructions: ['Cho sữa đặc vào ly trước.', 'Chiết xuất cà phê phin trực tiếp lên sữa đặc.', 'Khuấy đều và thêm đá.'],
+    availableOutlets: ['out-1', 'out-2', 'out-3']
   },
   {
-    id: 'bean-3',
-    name: 'Robusta Lâm Đồng Honey',
-    country: 'Việt Nam',
-    region: 'Đà Lạt',
-    process: 'Honey',
-    variety: 'Robusta 133',
-    quantityKg: 340,
-    status: 'Surplus',
-    lastRoastDate: '2026-05-15',
-    elevation: '1,050m',
-    notes: 'Cacao, hạt mắc ca rang, crema dày cho phin và espresso milk.',
+    id: 'rec-3',
+    name: 'Bạc xỉu',
+    type: 'Coffee',
+    origin: 'Robusta Blend',
+    description: 'Sữa nhiều hơn cà phê, vị thanh dịu — lựa chọn của những ai mới uống cà phê.',
+    image: 'https://images.unsplash.com/photo-1534778101976-62847782c213?auto=format&fit=crop&w=600&q=85',
+    price: 45000,
+    roast: 'Medium',
+    grindSetting: 4.5,
+    extractionTime: 25,
+    waterTemp: 93,
+    ratio: '1:2',
+    acidity: 2, body: 3, sweetness: 5, bitterness: 2,
+    soldToday: 51,
+    available: true,
+    tags: ['Classic', 'Ngọt nhẹ'],
+    instructions: ['Rót sữa tươi và sữa đặc vào ly.', 'Đánh tạo bọt nhẹ.', 'Rót 1 shot espresso lên bề mặt.'],
+    availableOutlets: ['out-1', 'out-2', 'out-3']
   },
   {
-    id: 'bean-4',
-    name: 'Tarrazú Red Apple',
-    country: 'Costa Rica',
-    region: 'San Marcos',
-    process: 'Honey',
-    variety: 'Caturra & Catuai',
-    quantityKg: 85,
-    status: 'Optimal',
-    lastRoastDate: '2026-05-19',
-    elevation: '1,600m',
-    notes: 'Táo đỏ, mật mía, hậu vị nho trắng.',
+    id: 'rec-4',
+    name: 'Cafe Latte',
+    type: 'Coffee',
+    origin: 'Arabica Cầu Đất',
+    description: 'Espresso chiết xuất chuẩn, sữa tươi microfoam mịn — vị cân bằng, thơm dịu.',
+    image: 'https://images.unsplash.com/photo-1570968915860-54d5c301fa9f?auto=format&fit=crop&w=600&q=85',
+    price: 65000,
+    roast: 'Light',
+    grindSetting: 2.0,
+    extractionTime: 28,
+    waterTemp: 92,
+    ratio: '1:2',
+    acidity: 3, body: 3, sweetness: 4, bitterness: 2,
+    soldToday: 34,
+    available: true,
+    tags: ['Latte art', 'Hot'],
+    instructions: ['Chiết xuất double shot espresso.', 'Đánh bọt sữa tươi mịn màng.', 'Rót sữa tạo hình nghệ thuật.'],
+    availableOutlets: ['out-1', 'out-2']
   },
+  {
+    id: 'rec-5',
+    name: 'Cappuccino',
+    type: 'Coffee',
+    origin: 'Arabica Cầu Đất',
+    description: 'Tỷ lệ vàng espresso — sữa — foam, lớp bọt mịn dày — chuẩn vị Ý.',
+    image: 'https://images.unsplash.com/photo-1493857671505-72967e2e2760?auto=format&fit=crop&w=600&q=85',
+    price: 65000,
+    roast: 'Medium',
+    grindSetting: 2.2,
+    extractionTime: 25,
+    waterTemp: 92,
+    ratio: '1:2',
+    acidity: 2, body: 4, sweetness: 3, bitterness: 3,
+    soldToday: 29,
+    available: true,
+    tags: ['Classic', 'Hot'],
+    instructions: ['Chiết xuất shot espresso.', 'Đánh sữa nóng tạo lớp bọt dày khoảng 1.5cm.', 'Rót vào tách.'],
+    availableOutlets: ['out-1', 'out-2']
+  },
+  {
+    id: 'rec-6',
+    name: 'Americano',
+    type: 'Coffee',
+    origin: 'Arabica Blend',
+    description: 'Espresso pha loãng với nước lạnh, giữ nguyên body và hậu vị đắng nhẹ dễ chịu.',
+    image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=600&q=85',
+    price: 55000,
+    roast: 'Medium',
+    grindSetting: 2.0,
+    extractionTime: 25,
+    waterTemp: 93,
+    ratio: '1:2',
+    acidity: 3, body: 2, sweetness: 3, bitterness: 3,
+    soldToday: 18,
+    available: true,
+    tags: ['Ít ngọt', 'Iced'],
+    instructions: ['Cho nước đá đầy ly.', 'Rót nước lọc vào khoảng 3/4 ly.', 'Float double shot espresso lên trên.'],
+    availableOutlets: ['out-1', 'out-2', 'out-3']
+  },
+  {
+    id: 'rec-7',
+    name: 'Cold Brew Truyền thống',
+    type: 'Cold Brew',
+    origin: 'Colombia Huila Anaerobic',
+    description: 'Ủ lạnh 18 giờ với hạt Colombia, vị trái cây nhẹ, hậu vị mật ong.',
+    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=600&q=85',
+    price: 65000,
+    roast: 'Light',
+    grindSetting: 8.5,
+    extractionTime: 64800,
+    waterTemp: 4,
+    ratio: '1:10',
+    acidity: 4, body: 3, sweetness: 5, bitterness: 1,
+    soldToday: 22,
+    available: true,
+    tags: ['Best Seller', 'Ít ngọt'],
+    instructions: ['Xay thô hạt Colombia.', 'Ủ lạnh trong bình kín 18 giờ.', 'Lọc bã và phục vụ lạnh.'],
+    availableOutlets: ['out-1', 'out-3']
+  },
+  {
+    id: 'rec-8',
+    name: 'Cold Brew Cam Sả',
+    type: 'Cold Brew',
+    origin: 'Colombia Huila',
+    description: 'Cold brew pha cam tươi và sả — thanh mát, thơm dịu, giải nhiệt tốt.',
+    image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=600&q=85',
+    price: 72000,
+    roast: 'Light',
+    grindSetting: 8.5,
+    extractionTime: 64800,
+    waterTemp: 4,
+    ratio: '1:10',
+    acidity: 5, body: 2, sweetness: 4, bitterness: 1,
+    soldToday: 31,
+    available: true,
+    tags: ['New', 'Sparkling'],
+    instructions: ['Chuẩn bị cốt Cold Brew.', 'Dầm sả tươi lấy nước cốt.', 'Khuấy đều cùng cam tươi và đá.'],
+    availableOutlets: ['out-1', 'out-3']
+  },
+  {
+    id: 'rec-9',
+    name: 'Cold Brew Macchiato',
+    type: 'Cold Brew',
+    origin: 'Colombia Blend',
+    description: 'Cold brew đậm, lớp sữa tươi đổ nhẹ lên trên — phân tầng đẹp mắt, vị béo mịn.',
+    image: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?auto=format&fit=crop&w=600&q=85',
+    price: 75000,
+    roast: 'Light',
+    grindSetting: 8.0,
+    extractionTime: 64800,
+    waterTemp: 4,
+    ratio: '1:8',
+    acidity: 3, body: 4, sweetness: 4, bitterness: 2,
+    soldToday: 15,
+    available: true,
+    tags: ['Trending', 'Béo ngậy'],
+    instructions: ['Rót cốt Cold Brew vào ly đá.', 'Đánh bọt kem sữa Macchiato béo mịn.', 'Rót nhẹ bọt kem lên bề mặt.'],
+    availableOutlets: ['out-1']
+  },
+  {
+    id: 'rec-10',
+    name: 'Trà Đào Cam Sả',
+    type: 'Tea',
+    origin: 'Trà Đen Bảo Lộc',
+    description: 'Trà đào thơm, cam tươi và sả — thức uống giải nhiệt số 1 mùa hè.',
+    image: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?auto=format&fit=crop&w=600&q=85',
+    price: 55000,
+    roast: 'None',
+    grindSetting: 0,
+    extractionTime: 300,
+    waterTemp: 90,
+    ratio: '1:15',
+    acidity: 4, body: 2, sweetness: 4, bitterness: 2,
+    soldToday: 67,
+    available: true,
+    tags: ['Best Seller', 'Mát lạnh'],
+    instructions: ['Ủ trà đen Bảo Lộc với nước sôi.', 'Thêm syrup đào, sả đập dập và nước cam.', 'Lắc đều với đá.'],
+    availableOutlets: ['out-1', 'out-2', 'out-3']
+  },
+  {
+    id: 'rec-11',
+    name: 'Trà Vải Lài',
+    type: 'Tea',
+    origin: 'Trà Lài Premium',
+    description: 'Vải tươi ngọt, hương lài thanh — vị trà nhẹ nhàng, dễ uống.',
+    image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=600&q=85',
+    price: 55000,
+    roast: 'None',
+    grindSetting: 0,
+    extractionTime: 240,
+    waterTemp: 85,
+    ratio: '1:20',
+    acidity: 3, body: 2, sweetness: 4, bitterness: 1,
+    soldToday: 49,
+    available: true,
+    tags: ['New', 'Thơm dịu'],
+    instructions: ['Ủ trà lài với nước nóng.', 'Khuấy cùng syrup vải và vải trái.', 'Phục vụ lạnh cùng đá.'],
+    availableOutlets: ['out-2', 'out-3']
+  },
+  {
+    id: 'rec-12',
+    name: 'Trà Ô Long Sen',
+    type: 'Tea',
+    origin: 'Ô Long Bảo Lộc',
+    description: 'Ô long Đài Loan ủ đậm, hương sen thanh khiết — vị trà tinh tế, hậu vị ngọt.',
+    image: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=600&q=85',
+    price: 60000,
+    roast: 'None',
+    grindSetting: 0,
+    extractionTime: 360,
+    waterTemp: 90,
+    ratio: '1:15',
+    acidity: 2, body: 3, sweetness: 3, bitterness: 2,
+    soldToday: 28,
+    available: true,
+    tags: ['Premium', 'Ít ngọt'],
+    instructions: ['Ủ trà ô long với nước nóng.', 'Khuấy nhẹ cùng syrup sen và hạt sen đã ninh nhừ.', 'Thêm đá phục vụ.'],
+    availableOutlets: ['out-3']
+  },
+  {
+    id: 'rec-13',
+    name: 'Matcha Latte',
+    type: 'Tea',
+    origin: 'Uji Matcha Nhật Bản',
+    description: 'Matcha Uji Nhật Bản, sữa tươi microfoam — vị đắng nhẹ, thơm cỏ xanh đặc trưng.',
+    image: 'https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?auto=format&fit=crop&w=600&q=85',
+    price: 72000,
+    roast: 'None',
+    grindSetting: 0,
+    extractionTime: 60,
+    waterTemp: 80,
+    ratio: '1:10',
+    acidity: 1, body: 4, sweetness: 3, bitterness: 3,
+    soldToday: 19,
+    available: true,
+    tags: ['Hot', 'Thơm dịu'],
+    instructions: ['Đánh tan bột matcha với nước ấm.', 'Đánh bọt sữa tươi nóng.', 'Rót sữa tạo hình trên ly cốt matcha.'],
+    availableOutlets: ['out-1', 'out-2']
+  },
+  {
+    id: 'rec-14',
+    name: 'Trà Xanh Đá Xay',
+    type: 'Tea',
+    origin: 'Uji Matcha & Cream',
+    description: 'Matcha xay nhuyễn với đá và sữa — mịn lạnh, ngọt thanh, giải nhiệt tức thì.',
+    image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=600&q=85',
+    price: 69000,
+    roast: 'None',
+    grindSetting: 0,
+    extractionTime: 45,
+    waterTemp: 0,
+    ratio: '1:1',
+    acidity: 1, body: 4, sweetness: 4, bitterness: 2,
+    soldToday: 44,
+    available: true,
+    tags: ['Iced', 'Trending'],
+    instructions: ['Cho bột matcha, sữa đặc, sữa tươi và đá vào máy xay.', 'Xay nhuyễn mịn.', 'Đổ ra ly và phủ kem tươi.'],
+    availableOutlets: ['out-1', 'out-3']
+  },
+  {
+    id: 'rec-15',
+    name: 'Cacao Đá Xay',
+    type: 'Tea',
+    origin: 'Cacao Đắk Lắk',
+    description: 'Cacao nguyên chất xay với đá và sữa tươi — béo ngậy, thơm chocolate, dễ uống.',
+    image: 'https://images.unsplash.com/photo-1534778101976-62847782c213?auto=format&fit=crop&w=600&q=85',
+    price: 65000,
+    roast: 'None',
+    grindSetting: 0,
+    extractionTime: 45,
+    waterTemp: 0,
+    ratio: '1:1',
+    acidity: 1, body: 4, sweetness: 4, bitterness: 3,
+    soldToday: 38,
+    available: true,
+    tags: ['Ngọt nhẹ', 'Iced'],
+    instructions: ['Hòa tan bột cacao với nước ấm.', 'Xay nhuyễn cùng sữa, đá và syrup.', 'Đổ ra ly, trang trí sốt chocolate.'],
+    availableOutlets: ['out-1']
+  }
 ];
 
 const INITIAL_BARISTAS: Barista[] = [
@@ -435,8 +540,8 @@ const INITIAL_SHIFTS: Shift[] = [
 const INITIAL_MESSAGES: SystemMessage[] = [
   {
     id: 'msg-1',
-    title: 'Kho Gesha gần ngưỡng cảnh báo',
-    message: 'Lô Gesha Golden Nectar còn 18kg. Nên lên kế hoạch nhập hạt cho cuối tuần.',
+    title: 'Kho nguyên liệu gần ngưỡng cảnh báo',
+    message: 'Nên lên kế hoạch kiểm tra tồn kho cho cuối tuần.',
     time: '20 phút trước',
     type: 'warning',
   },
@@ -480,25 +585,12 @@ function createPointHistoryEntry(order: Order, balanceAfter: number): LoyaltyPoi
   };
 }
 
-function createRewardHistoryEntry(reward: LoyaltyReward, balanceAfter: number, orderId?: string): LoyaltyPointEntry {
-  return {
-    id: `pts-reward-${reward.id}-${Date.now()}`,
-    date: new Date().toISOString().split('T')[0],
-    description: `Đổi ${reward.points} điểm lấy ${reward.name}`,
-    orderId,
-    type: 'Redeemed',
-    points: -reward.points,
-    balanceAfter,
-  };
-}
-
 export const useStore = create<RenoState>((set, get) => ({
   currentRole: 'Manager',
   isLoggedIn: true,
   currentUser: INITIAL_BARISTAS[0],
   outlets: INITIAL_OUTLETS,
   recipes: INITIAL_RECIPES,
-  beans: INITIAL_BEANS,
   baristas: INITIAL_BARISTAS,
   shifts: INITIAL_SHIFTS,
   orders: orderService.getOrders(),
@@ -507,43 +599,6 @@ export const useStore = create<RenoState>((set, get) => ({
   customerCart: [],
   systemMessages: INITIAL_MESSAGES,
   activeOutletId: 'out-1',
-
-  login: (baristaId, role) => {
-    const barista = get().baristas.find((item) => item.id === baristaId) || null;
-    set({ isLoggedIn: true, currentUser: barista, currentRole: role });
-    get().pushMessage('Đăng nhập thành công', `Chào ${barista?.name || 'Reno team'}, ca làm đã sẵn sàng.`, 'success');
-  },
-
-  logout: () => set({ isLoggedIn: false, currentUser: null }),
-
-  setRole: (role) => {
-    set({ currentRole: role });
-    get().pushMessage('Đã đổi vai trò', `Giao diện đang áp dụng quyền của ${ROLE_PERMISSIONS[role].label}.`, 'info');
-  },
-
-  setActiveOutlet: (id) => set({ activeOutletId: id }),
-
-  addOutlet: (outlet) => {
-    set((state) => ({ outlets: [outlet, ...state.outlets] }));
-    get().pushMessage('Đã thêm chi nhánh', `${outlet.name} đã được đưa vào hệ thống.`, 'success');
-  },
-
-  updateOutlet: (updated) =>
-    set((state) => ({ outlets: state.outlets.map((outlet) => (outlet.id === updated.id ? updated : outlet)) })),
-
-  addRecipe: (recipe) => {
-    set((state) => ({ recipes: [recipe, ...state.recipes] }));
-    get().pushMessage('Đã thêm món mới', `${recipe.name} đã xuất hiện trong thực đơn.`, 'success');
-  },
-
-  deleteRecipe: (id) => set((state) => ({ recipes: state.recipes.filter((recipe) => recipe.id !== id) })),
-
-  toggleRecipeAvailability: (id) =>
-    set((state) => ({
-      recipes: state.recipes.map((recipe) =>
-        recipe.id === id ? { ...recipe, available: !recipe.available } : recipe,
-      ),
-    })),
 
   addBeans: (bean) => {
     set((state) => ({ beans: [bean, ...state.beans] }));
@@ -798,6 +853,46 @@ export const useStore = create<RenoState>((set, get) => ({
 
   dismissMessage: (id) =>
     set((state) => ({ systemMessages: state.systemMessages.filter((message) => message.id !== id) })),
+
+  setRole: (role) => set({ currentRole: role }),
+  setActiveOutlet: (id) => set({ activeOutletId: id }),
+  login: (baristaId, role) => {
+    const barista = get().baristas.find((b) => b.id === baristaId) || null;
+    set({
+      isLoggedIn: true,
+      currentUser: barista,
+      currentRole: role,
+    });
+    if (barista && barista.activeOutletId) {
+      set({ activeOutletId: barista.activeOutletId });
+    }
+  },
+  logout: () =>
+    set({
+      isLoggedIn: false,
+      currentUser: null,
+      currentRole: 'Apprentice',
+    }),
+  addOutlet: (outlet) =>
+    set((state) => ({ outlets: [...state.outlets, outlet] })),
+  updateOutlet: (outlet) =>
+    set((state) => ({
+      outlets: state.outlets.map((o) => (o.id === outlet.id ? outlet : o)),
+    })),
+  addRecipe: (recipe) =>
+    set((state) => ({ recipes: [...state.recipes, recipe] })),
+  updateRecipe: (recipe) =>
+    set((state) => ({
+      recipes: state.recipes.map((r) => (r.id === recipe.id ? recipe : r)),
+    })),
+  deleteRecipe: (id) =>
+    set((state) => ({ recipes: state.recipes.filter((r) => r.id !== id) })),
+  toggleRecipeAvailability: (id) =>
+    set((state) => ({
+      recipes: state.recipes.map((r) =>
+        r.id === id ? { ...r, available: !r.available } : r
+      ),
+    })),
 
   pushMessage: (title, message, type) =>
     set((state) => ({

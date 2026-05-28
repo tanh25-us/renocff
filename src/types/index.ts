@@ -1,5 +1,5 @@
 export type MenuCategory = 'Coffee' | 'Cold Brew' | 'Tea' | 'Pastry' | 'Retail';
-export type AppRouteId = 'storefront' | 'checkout' | 'dashboard' | 'orders' | 'menu' | 'customers' | 'branches';
+export type AppRouteId = 'storefront' | 'checkout' | 'dashboard' | 'orders' | 'menu' | 'customers' | 'branches' | 'staff';
 export type OrderChannel = 'DineIn' | 'Pickup' | 'Delivery';
 export type OrderSource = 'Website' | 'MobileApp' | 'POS';
 export type OrderStatus = 'Pending' | 'Brewing' | 'Ready' | 'Completed' | 'Cancelled';
@@ -41,20 +41,7 @@ export interface Recipe {
   available: boolean;
   tags: string[];
   instructions: string[];
-}
-
-export interface BeanStock {
-  id: string;
-  name: string;
-  country: string;
-  region: string;
-  process: 'Washed' | 'Natural' | 'Honey' | 'Anaerobic';
-  variety: string;
-  quantityKg: number;
-  status: 'Critical' | 'Optimal' | 'Surplus';
-  lastRoastDate: string;
-  elevation: string;
-  notes: string;
+  availableOutlets?: string[];
 }
 
 export interface Barista {
@@ -65,7 +52,7 @@ export interface Barista {
   productivity: number;
   mood: 'Energetic' | 'Cozy' | 'Focused' | 'Calm' | 'Tired';
   skills: string[];
-  activeOutletId: string;
+  activeOutletId?: string;
 }
 
 export interface Shift {
@@ -152,7 +139,6 @@ export interface RolePermission {
   description: string;
   permissions: {
     canManageRecipes: boolean;
-    canManageInventory: boolean;
     canManageShifts: boolean;
     canManageOutlets: boolean;
     canManageOrders: boolean;
